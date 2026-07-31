@@ -16,7 +16,7 @@ const bootSteps = {
     firebase: { label: 'Firebase', status: 'pending' },
     auth: { label: 'Autenticação', status: 'pending' },
     ranking: { label: 'Ranking', status: 'pending' },
-    engine: { label: 'Motor 3D (PlayCanvas)', status: 'pending' }
+    engine: { label: 'Motor 3D (ao tocar Jogar)', status: 'pending' }
 };
 
 const panel = document.getElementById('debug-panel');
@@ -283,14 +283,33 @@ function wireUi() {
     document.getElementById('btn-debug-close')?.addEventListener('click', () => closePanel());
     document.getElementById('boot-shell-debug')?.addEventListener('click', () => openPanel());
     bootShellCopy?.addEventListener('click', () => copyReport());
-    document.getElementById('boot-shell-continue')?.addEventListener('click', () => {
-        hideBootShell();
-        document.body.classList.add('menu-open');
-        const menu = document.getElementById('app-menu');
-        if (menu) menu.hidden = false;
-    });
-
+    document.getElementById('boot-shell-continue')?.addEventListener('click', () => continueToMenu());
     document.getElementById('btn-debug-copy')?.addEventListener('click', () => copyReport());
+}
+
+/**
+ * @returns {void}
+ */
+export function continueToMenu() {
+    hideBootShell();
+    document.body.classList.add('menu-open');
+    document.body.classList.remove('booting');
+
+    const menu = document.getElementById('app-menu');
+    if (menu) menu.hidden = false;
+
+    if (bootStatus) {
+        bootStatus.hidden = false;
+        bootStatus.textContent = 'Menu aberto — toque em Jogar';
+    }
+
+    bootLog('Menu aberto — toque em Jogar para carregar o motor 3D');
+
+    import('./engine-loader.mjs').then((loader) => {
+        loader.probeEngineFile({ bootLog, bootError, setBootStep });
+    }).catch((error) => {
+        bootError(error, '[Motor] Probe');
+    });
 }
 
 /**
@@ -344,4 +363,4 @@ WATCHDOG_MS.forEach((ms) => {
     }, ms);
 });
 
-window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, entries };
+window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, continueToMenu, entries };

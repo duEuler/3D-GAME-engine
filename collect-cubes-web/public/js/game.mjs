@@ -50,10 +50,16 @@ export async function startGame(options) {
     bootLog('Criando dispositivo gráfico...');
     let device;
     try {
-        device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl2', 'webgpu'] });
+        device = await Promise.race([
+            pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl2', 'webgpu'] }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('GPU timeout 20s')), 20000))
+        ]);
     } catch (firstError) {
         bootError(firstError, 'WebGL2/WebGPU falhou, tentando WebGL1');
-        device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl1'] });
+        device = await Promise.race([
+            pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl1'] }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('WebGL1 timeout 20s')), 20000))
+        ]);
     }
     bootLog(`GPU: ${device.isWebGL2 ? 'WebGL2' : device.isWebGPU ? 'WebGPU' : 'WebGL'}`);
     device.maxPixelRatio = Math.min(window.devicePixelRatio, 2);
@@ -285,7 +291,9 @@ export async function startGame(options) {
     };
 
     await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Fonte courier.json timeout 15s')), 15000);
         new pc.AssetListLoader(Object.values(assets), app.assets).load((err) => {
+            clearTimeout(timer);
             if (err) reject(err);
             else resolve();
         });

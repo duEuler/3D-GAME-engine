@@ -1,4 +1,5 @@
 import { withTimeout } from './firebase/with-timeout.mjs';
+import { loadGameModule } from './engine-loader.mjs';
 
 /** @type {typeof import('./debug-panel.mjs') | null} */
 let debug = null;
@@ -112,34 +113,36 @@ function markAppReady() {
     debug.setBootStep('auth', 'ok');
     showMenu();
     if (continueButton) continueButton.hidden = false;
-    debug.bootLog('Pronto — toque em Continuar ou Jogar');
+    debug.bootLog('Pronto — toque em Continuar');
 }
 
 function wireUi() {
     playButton?.addEventListener('click', async () => {
         if (!debug) return;
         try {
-            debug.bootLog('Carregando motor 3D (~3,6 MB)...');
-            debug.setBootStep('engine', 'loading');
+            showBootShell();
+            debug.bootLog('Preparando jogo...');
             await authApi?.ensureSignedIn();
             hideMenu();
+
+            const gameModule = await loadGameModule(debug);
+            debug.setBootStep('engine', 'ok', 'Motor 3D — OK');
             debug.hideBootShell();
+            debug.bootLog('Iniciando cena 3D...');
 
-            const { startGame } = await import('./game.mjs');
-            debug.setBootStep('engine', 'ok');
-            debug.bootLog('Iniciando jogo...');
-
-            await startGame({
+            await withTimeout(gameModule.startGame({
                 levelId: 'default',
                 onFinished: () => {
                     debug.bootLog('Voltando ao menu');
                     showMenu();
                     refreshLeaderboard().catch((error) => showError(error, 'Ranking'));
                 }
-            });
-            debug.bootLog('Jogo iniciado com sucesso');
+            }), 60000, 'Inicialização da cena');
+
+            debug.bootLog('Jogo rodando');
         } catch (error) {
             debug.setBootStep('engine', 'error', 'Motor 3D — falhou');
+            debug.showBootShell();
             showMenu();
             showError(error, 'Falha ao iniciar jogo');
         }

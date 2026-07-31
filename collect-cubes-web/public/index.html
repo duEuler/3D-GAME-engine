@@ -114,7 +114,14 @@
                     }
                 });
                 document.getElementById('boot-shell-continue')?.addEventListener('click', function () {
-                    document.getElementById('boot-shell').hidden = true;
+                    if (window.collectCubesDebug && window.collectCubesDebug.continueToMenu) {
+                        window.collectCubesDebug.continueToMenu();
+                    } else {
+                        document.getElementById('boot-shell').hidden = true;
+                        document.body.classList.remove('booting');
+                        var menu = document.getElementById('app-menu');
+                        if (menu) menu.hidden = false;
+                    }
                 });
             });
 
@@ -172,6 +179,8 @@
             <p id="user-label">Conectando...</p>
             <p id="online-label" class="muted">0 online</p>
 
+            <p class="help-hint">Motor 3D só carrega ao tocar <strong>Jogar</strong>. Use <strong>Diagnóstico</strong> se travar.</p>
+
             <div class="actions">
                 <button id="btn-play" class="primary" type="button">Jogar</button>
                 <button id="btn-google" type="button">Entrar com Google</button>
@@ -223,14 +232,14 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=4');
+            const debug = await import('./js/debug-panel.mjs?v=5');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            const bootstrap = await import('./js/bootstrap.mjs?v=4');
+            const bootstrap = await import('./js/bootstrap.mjs?v=5');
             debug.setBootStep('modules', 'loading');
             debug.bootLog('Carregando bootstrap...');
             await bootstrap.initApp(debug);
