@@ -129,6 +129,9 @@ function markAppReady() {
     debug.bootLog('Pronto — toque em Continuar');
 }
 
+/** @type {boolean} */
+let playInProgress = false;
+
 function wireUi() {
     if (!safeAction || !debug) return;
     const { safeClick } = safeAction;
@@ -137,29 +140,44 @@ function wireUi() {
         debug.continueToMenu();
     }));
 
-    playButton?.addEventListener('click', safeClick(debug, 'Jogar', async () => {
-        const { loadGameModule } = await import('./engine-loader.mjs');
+    playButton?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        if (playInProgress) return;
+        playInProgress = true;
 
-        debug.showBootShell();
-        await authApi?.ensureSignedIn();
-        hideMenu();
+        try {
+            debug.bootLog('▶ Jogar...');
+            const { loadStartGame } = await import('./engine-loader.mjs');
 
-        const gameModule = await loadGameModule(debug);
-        debug.setBootStep('engine', 'ok', 'Motor 3D — OK');
-        debug.hideBootShell();
-        debug.bootLog('Iniciando cena 3D...');
+            debug.showBootShell();
+            await authApi?.ensureSignedIn();
+            hideMenu();
 
-        await withTimeout(gameModule.startGame({
-            levelId: 'default',
-            onFinished: () => {
-                debug.bootLog('Voltando ao menu');
-                forceShowMenu();
-                refreshLeaderboard().catch((error) => showError(error, 'Ranking'));
-            }
-        }), 60000, 'Cena 3D');
+            const startGame = await loadStartGame(debug);
+            debug.setBootStep('engine', 'ok', 'Motor 3D — OK');
+            debug.hideBootShell();
+            debug.bootLog('Iniciando cena 3D...');
 
-        debug.bootLog('Jogo rodando');
-    }));
+            await withTimeout(startGame({
+                levelId: 'default',
+                onFinished: () => {
+                    playInProgress = false;
+                    debug.bootLog('Voltando ao menu');
+                    forceShowMenu();
+                    refreshLeaderboard().catch((error) => showError(error, 'Ranking'));
+                }
+            }), 60000, 'Cena 3D');
+
+            debug.bootLog('✓ Jogo rodando');
+        } catch (error) {
+            playInProgress = false;
+            debug.setBootStep('engine', 'error', 'Motor 3D — falhou');
+            forceShowMenu();
+            debug.showBootShell();
+            debug.bootError(error, 'Jogar');
+            debug.showErrorDialog(error, 'Jogar');
+        }
+    });
 
     googleButton?.addEventListener('click', safeClick(debug, 'Login Google', async () => {
         const result = await authApi.signInWithGoogle();

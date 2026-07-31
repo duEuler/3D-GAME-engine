@@ -1,44 +1,44 @@
 import { withTimeout } from './firebase/with-timeout.mjs';
 
+export const ENGINE_VERSION = '8';
+
 /**
  * @param {{ bootLog: Function, bootError: Function, setBootStep: Function }} debug - Debug API.
- * @returns {Promise<typeof import('./game.mjs')>}
+ * @returns {Promise<(options: import('./game.mjs').StartGameOptions) => Promise<void>>}
  */
-export async function loadGameModule(debug) {
+export async function loadStartGame(debug) {
     debug.setBootStep('engine', 'loading', 'Motor 3D — verificando arquivo');
-    debug.bootLog('[Motor] Verificando playcanvas.mjs no servidor...');
+    debug.bootLog('[Motor] Verificando playcanvas.mjs...');
 
-    let headResponse;
-    try {
-        headResponse = await withTimeout(
-            fetch('./lib/playcanvas.mjs', { method: 'HEAD', cache: 'no-cache' }),
-            15000,
-            'Verificação playcanvas.mjs'
-        );
-    } catch (error) {
-        debug.setBootStep('engine', 'error', 'Motor 3D — arquivo inacessível');
-        throw error;
-    }
+    const headResponse = await withTimeout(
+        fetch('./lib/playcanvas.mjs', { method: 'HEAD', cache: 'no-cache' }),
+        15000,
+        'Verificação playcanvas.mjs'
+    );
 
     if (!headResponse.ok) {
-        const msg = `[Motor] playcanvas.mjs não encontrado (HTTP ${headResponse.status})`;
-        debug.setBootStep('engine', 'error', 'Motor 3D — não encontrado');
-        throw new Error(msg);
+        throw new Error(`[Motor] playcanvas.mjs HTTP ${headResponse.status}`);
     }
 
     const bytes = headResponse.headers.get('content-length');
-    const sizeLabel = bytes ? `${(Number(bytes) / (1024 * 1024)).toFixed(1)} MB` : 'tamanho desconhecido';
+    const sizeLabel = bytes ? `${(Number(bytes) / (1024 * 1024)).toFixed(1)} MB` : '? MB';
     debug.bootLog(`[Motor] Arquivo OK (${sizeLabel})`);
 
-    debug.bootLog(`[Motor] Baixando PlayCanvas (${sizeLabel}) — aguarde no 4G...`);
+    debug.bootLog(`[Motor] Baixando PlayCanvas (${sizeLabel})...`);
     await withTimeout(import('playcanvas'), 120000, 'Download PlayCanvas');
-    debug.bootLog('[Motor] PlayCanvas importado com sucesso');
+    debug.bootLog('[Motor] PlayCanvas OK');
 
     debug.bootLog('[Motor] Carregando game.mjs...');
-    const gameModule = await withTimeout(import('./game.mjs'), 30000, 'game.mjs');
-    debug.bootLog('[Motor] game.mjs carregado');
+    const mod = await withTimeout(import(`./game.mjs?v=${ENGINE_VERSION}`), 30000, 'game.mjs');
+    const startGame = mod.startGame ?? mod.default?.startGame;
 
-    return gameModule;
+    if (typeof startGame !== 'function') {
+        const keys = Object.keys(mod).join(', ') || '(vazio)';
+        throw new Error(`game.mjs sem startGame. Exports: ${keys}`);
+    }
+
+    debug.bootLog('[Motor] startGame pronto');
+    return startGame;
 }
 
 /**
@@ -46,7 +46,6 @@ export async function loadGameModule(debug) {
  * @returns {Promise<string>}
  */
 export async function probeEngineFile(debug) {
-    debug.bootLog('[Motor] Verificando se o motor existe no servidor...');
     try {
         const response = await withTimeout(
             fetch('./lib/playcanvas.mjs', { method: 'HEAD', cache: 'no-cache' }),
@@ -54,16 +53,12 @@ export async function probeEngineFile(debug) {
             'Probe playcanvas'
         );
         if (!response.ok) {
-            const msg = `[Motor] NÃO encontrado — HTTP ${response.status}`;
-            debug.bootError(new Error(msg), 'Motor');
-            return msg;
+            return `[Motor] NÃO encontrado — HTTP ${response.status}`;
         }
         const bytes = response.headers.get('content-length');
-        const msg = `[Motor] Encontrado (${bytes ? `${(Number(bytes) / (1024 * 1024)).toFixed(1)} MB` : 'OK'}) — toque em Jogar para baixar`;
-        debug.bootLog(msg);
-        return msg;
+        return `[Motor] OK (${bytes ? `${(Number(bytes) / (1024 * 1024)).toFixed(1)} MB` : '?'})`;
     } catch (error) {
-        debug.bootError(error, '[Motor] Verificação');
+        debug.bootError(error, 'Verificação motor');
         return String(error);
     }
 }

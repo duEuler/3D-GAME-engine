@@ -1,13 +1,6 @@
-import * as pc from 'playcanvas';
-
-import { bootError, bootLog } from './debug-panel.mjs';
-import { getCurrentUser } from './firebase/auth-service.mjs';
-import { publishLiveScore } from './firebase/realtime-service.mjs';
-import { saveRunResult } from './firebase/firestore-service.mjs';
-
 const IS_TOUCH_DEVICE = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-/** @type {pc.AppBase | null} */
+/** @type {import('playcanvas').AppBase | null} */
 let activeApp = null;
 /** @type {(() => void) | null} */
 let activeCleanup = null;
@@ -24,6 +17,12 @@ let hasSavedCurrentRun = false;
  * @returns {Promise<void>}
  */
 export async function startGame(options) {
+    const pc = await import('playcanvas');
+    const { bootError, bootLog } = await import('./debug-panel.mjs');
+    const { getCurrentUser } = await import('./firebase/auth-service.mjs');
+    const { publishLiveScore } = await import('./firebase/realtime-service.mjs');
+    const { saveRunResult } = await import('./firebase/firestore-service.mjs');
+
     const { levelId, onFinished } = options;
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('application-canvas'));
     const backButton = document.getElementById('btn-back-menu');
