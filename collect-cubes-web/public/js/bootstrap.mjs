@@ -362,7 +362,8 @@ function setupLobbyListener(code) {
             startBtn.hidden = room.hostUid !== user.uid || room.status !== 'waiting';
         }
 
-        if (room.status === 'playing' && !playInProgress) {
+        if (room.status === 'playing' && !playInProgress && launchingRoomCode !== code) {
+            launchingRoomCode = code;
             launchMultiplayerGame(code);
         }
     });
@@ -405,6 +406,7 @@ async function launchSoloGame() {
 async function launchMultiplayerGame(code) {
     if (playInProgress) return;
     playInProgress = true;
+    launchingRoomCode = code;
     try {
         debug?.bootLog('▶ Multiplayer...');
         debug?.showBootShell();
@@ -423,10 +425,12 @@ async function launchMultiplayerGame(code) {
             roomCode: code,
             onFinished: () => {
                 playInProgress = false;
+                launchingRoomCode = '';
                 forceShowMenu();
             },
             onMultiplayerEnd: (results) => {
                 playInProgress = false;
+                launchingRoomCode = '';
                 appState.lastResults = results;
                 renderResultsList(results);
                 showScreen('results');
