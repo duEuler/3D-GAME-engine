@@ -390,6 +390,16 @@ export async function leaveMatchmaking() {
 }
 
 /**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isPermissionDenied(error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    const msg = error instanceof Error ? error.message : String(error);
+    return code === 'PERMISSION_DENIED' || msg.includes('Permission denied');
+}
+
+/**
  * Tenta parear jogadores na fila (host cria sala).
  * @param {string} levelId
  * @returns {Promise<string|null>} Room code if matched.
@@ -400,8 +410,17 @@ export async function tryMatchmake(levelId) {
 
     const { ref, get, remove, set } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
     const database = await getRtdb();
-    const queueRef = ref(database, 'collectCubes/matchmaking');
-    const snap = await get(queueRef);
+
+    let snap;
+    try {
+        snap = await get(ref(database, 'collectCubes/matchmaking'));
+    } catch (error) {
+        if (isPermissionDenied(error)) {
+            throw new Error('Sem permissão no matchmaking. Recarregue a página e faça login novamente.');
+        }
+        throw error;
+    }
+
     if (!snap.exists()) return null;
 
     const queue = snap.val();
@@ -445,8 +464,13 @@ export async function tryMatchmake(levelId) {
         }
     });
 
+    await set(ref(database, `collectCubes/pendingMatches/${partnerUid}`), {
+        roomCode: code,
+        matchedBy: user.uid,
+        at: Date.now()
+    });
+
     await remove(ref(database, `collectCubes/matchmaking/${user.uid}`));
-    await remove(ref(database, `collectCubes/matchmaking/${partnerUid}`));
 
     return code;
 }
@@ -457,32 +481,25 @@ export async function tryMatchmake(levelId) {
  * @returns {() => void}
  */
 export function subscribeMatchmakingResult(onMatched) {
-    let user = null;
     let unsubscribe = () => {};
     let cancelled = false;
 
-    requireUser().then((u) => {
-        if (cancelled || !u) return;
-        user = u;
+    requireUser().then((user) => {
+        if (cancelled || !user) return;
 
         getRtdb().then(async (database) => {
             if (cancelled) return;
-            const { onValue, ref, get } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
-            const queueRef = ref(database, `collectCubes/matchmaking/${user.uid}`);
+            const { onValue, ref, remove } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+            const matchRef = ref(database, `collectCubes/pendingMatches/${user.uid}`);
 
-            unsubscribe = onValue(queueRef, async (snapshot) => {
-                if (cancelled || snapshot.exists()) return;
-
-                const roomsSnap = await get(ref(database, `collectCubes/rooms`)).catch(() => null);
-                if (!roomsSnap?.exists()) return;
-
-                const rooms = roomsSnap.val();
-                for (const [code, room] of Object.entries(rooms)) {
-                    if (room.players?.[user.uid] && room.matchmade) {
-                        onMatched(code);
-                        return;
-                    }
-                }
+            unsubscribe = onValue(matchRef, (snapshot) => {
+                if (cancelled || !snapshot.exists()) return;
+                const data = snapshot.val();
+                const code = data?.roomCode;
+                if (!code) return;
+                remove(matchRef).catch(() => {});
+                remove(ref(database, `collectCubes/matchmaking/${user.uid}`)).catch(() => {});
+                onMatched(code);
             });
         });
     }).catch(() => {});

@@ -6,7 +6,7 @@ import {
     renderColorPicker, renderLobbyPlayers, renderResultsList
 } from './ui/menu-controller.mjs';
 
-const AUTH_VERSION = '14';
+const AUTH_VERSION = '15';
 
 /** @type {typeof import('./debug-panel.mjs') | null} */
 let debug = null;
@@ -369,12 +369,24 @@ function setupLobbyListener(code) {
     });
 }
 
+function stopMatchmakingPolling() {
+    if (matchmakingInterval) {
+        clearInterval(matchmakingInterval);
+        matchmakingInterval = null;
+    }
+    stopMatchmakingListener?.();
+    stopMatchmakingListener = null;
+    roomApi?.leaveMatchmaking().catch(() => {});
+    const statusEl = document.getElementById('matchmaking-status');
+    if (statusEl) statusEl.hidden = true;
+}
+
 async function launchSoloGame() {
     if (playInProgress) return;
     playInProgress = true;
     try {
         debug?.bootLog('▶ Solo...');
-        const { loadStartGame } = await import('./engine-loader.mjs');
+        const { loadStartGame } = await import(`./engine-loader.mjs?v=${AUTH_VERSION}`);
         debug?.showBootShell();
         await authApi?.ensureSignedIn();
         hideMenu();
@@ -410,7 +422,7 @@ async function launchMultiplayerGame(code) {
     try {
         debug?.bootLog('▶ Multiplayer...');
         debug?.showBootShell();
-        const { loadStartGame } = await import('./engine-loader.mjs');
+        const { loadStartGame } = await import(`./engine-loader.mjs?v=${AUTH_VERSION}`);
         await authApi?.ensureSignedIn();
         hideMenu();
         stopRoomListener?.();
@@ -496,6 +508,8 @@ async function startMatchmaking() {
     const user = await ensureAuthForOnline();
     if (!user) return;
 
+    stopMatchmakingPolling();
+
     const statusEl = document.getElementById('matchmaking-status');
     if (statusEl) {
         statusEl.hidden = false;
@@ -506,21 +520,28 @@ async function startMatchmaking() {
     await roomApi.joinMatchmaking(appState.selectedLevelId, info);
 
     stopMatchmakingListener = roomApi.subscribeMatchmakingResult((code) => {
-        if (matchmakingInterval) clearInterval(matchmakingInterval);
-        if (statusEl) statusEl.hidden = true;
+        stopMatchmakingPolling();
         appState.roomCode = code;
         showScreen('lobby');
         setupLobbyListener(code);
     });
 
     matchmakingInterval = setInterval(async () => {
-        const code = await roomApi.tryMatchmake(appState.selectedLevelId);
-        if (code) {
-            if (matchmakingInterval) clearInterval(matchmakingInterval);
-            if (statusEl) statusEl.hidden = true;
-            appState.roomCode = code;
-            showScreen('lobby');
-            setupLobbyListener(code);
+        try {
+            const code = await roomApi.tryMatchmake(appState.selectedLevelId);
+            if (code) {
+                stopMatchmakingPolling();
+                appState.roomCode = code;
+                showScreen('lobby');
+                setupLobbyListener(code);
+            }
+        } catch (error) {
+            stopMatchmakingPolling();
+            if (statusEl) {
+                statusEl.hidden = false;
+                statusEl.textContent = error instanceof Error ? error.message : String(error);
+            }
+            showError(error, 'Matchmaking');
         }
     }, 3000);
 }
@@ -615,8 +636,10 @@ function wireUi() {
             if (target === 'mode' && appState.roomCode && roomApi) {
                 await roomApi.leaveRoom(appState.roomCode);
                 stopRoomListener?.();
-                if (matchmakingInterval) clearInterval(matchmakingInterval);
-                await roomApi.leaveMatchmaking();
+                stopMatchmakingPolling();
+            }
+            if (target === 'mode') {
+                stopMatchmakingPolling();
             }
             showScreen(target === 'mode' ? 'mode' : 'main');
         }));

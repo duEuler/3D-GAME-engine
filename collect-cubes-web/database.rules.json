@@ -33,7 +33,7 @@
           ".write": "auth != null && (!data.exists() && newData.child('hostUid').val() == auth.uid || data.child('hostUid').val() == auth.uid)",
           "players": {
             "$uid": {
-              ".write": "auth != null && (auth.uid == $uid || root.child('collectCubes/rooms').child($roomCode).child('hostUid').val() == auth.uid)"
+              ".write": "auth != null && (auth.uid == $uid || root.child('collectCubes/rooms').child($roomCode).child('hostUid').val() == auth.uid || !root.child('collectCubes/rooms').child($roomCode).exists())"
             }
           },
           "collectibles": {
@@ -44,9 +44,16 @@
         }
       },
       "matchmaking": {
+        ".read": "auth != null",
         "$uid": {
           ".read": "auth != null",
           ".write": "auth != null && auth.uid == $uid"
+        }
+      },
+      "pendingMatches": {
+        "$uid": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null"
         }
       }
     }

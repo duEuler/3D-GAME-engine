@@ -1,4 +1,4 @@
-const IS_TOUCH_DEVICE = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+export const GAME_MODULE_VERSION = '15';
 const POSITION_SYNC_INTERVAL = 100;
 
 /** @type {import('playcanvas').AppBase | null} */
@@ -7,23 +7,36 @@ let activeApp = null;
 let activeCleanup = null;
 let hasSavedCurrentRun = false;
 
+/** @type {import('playcanvas').GraphicsDevice | null} */
+let activeGraphicsDevice = null;
+
 /**
- * Destrói o app PlayCanvas ativo com segurança (evita double-destroy).
+ * Destrói o app PlayCanvas ativo com segurança (evita double-destroy e vazamento WebGL).
  */
 function destroyActiveApp() {
-    if (!activeApp) return;
-    try {
-        activeApp.destroy();
-    } catch {
-        // App já destruído ou canvas indisponível
+    if (activeApp) {
+        try {
+            activeApp.destroy();
+        } catch {
+            // App já destruído ou canvas indisponível
+        }
+        activeApp = null;
     }
-    activeApp = null;
+    if (activeGraphicsDevice) {
+        try {
+            activeGraphicsDevice.destroy();
+        } catch {
+            // GPU já liberada
+        }
+        activeGraphicsDevice = null;
+    }
 }
 
 /**
  * Limpa sessão anterior antes de iniciar nova partida.
  */
 function runPendingCleanup() {
+    document.getElementById('joystick')?.remove();
     if (activeCleanup) {
         const fn = activeCleanup;
         activeCleanup = null;
@@ -103,6 +116,7 @@ export async function startGame(options) {
         ]);
     }
     device.maxPixelRatio = Math.min(window.devicePixelRatio, 2);
+    activeGraphicsDevice = device;
 
     const createOptions = new pc.AppOptions();
     createOptions.graphicsDevice = device;
@@ -267,9 +281,7 @@ export async function startGame(options) {
         backButton?.removeEventListener('click', onBackClick);
         touchJoystick?.destroy();
         window.removeEventListener('resize', resize);
-        if (activeApp === app) {
-            destroyActiveApp();
-        }
+        destroyActiveApp();
         document.getElementById('joystick')?.remove();
         if (backButton) backButton.hidden = true;
         activeCleanup = null;
