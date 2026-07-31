@@ -1,7 +1,5 @@
 import * as pc from 'playcanvas';
 
-import { deviceType } from 'examples/context';
-
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('application-canvas'));
 window.focus();
 
@@ -16,17 +14,14 @@ const assets = {
     font: new pc.Asset('font', 'font', { url: './assets/fonts/courier.json' })
 };
 
-const gfxOptions = {
-    deviceTypes: [deviceType]
-};
-
-const device = await pc.createGraphicsDevice(canvas, gfxOptions);
+const device = await pc.createGraphicsDevice(canvas, {
+    deviceTypes: ['webgl2']
+});
 device.maxPixelRatio = Math.min(window.devicePixelRatio, 2);
 
 const createOptions = new pc.AppOptions();
 createOptions.graphicsDevice = device;
 createOptions.keyboard = new pc.Keyboard(document.body);
-
 createOptions.componentSystems = [
     pc.RenderComponentSystem,
     pc.CameraComponentSystem,
@@ -38,15 +33,12 @@ createOptions.resourceHandlers = [pc.TextureHandler, pc.FontHandler];
 
 const app = new pc.AppBase(canvas);
 app.init(createOptions);
-
 app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
 app.setCanvasResolution(pc.RESOLUTION_AUTO);
 
 const resize = () => app.resizeCanvas();
 window.addEventListener('resize', resize);
-app.on('destroy', () => {
-    window.removeEventListener('resize', resize);
-});
+app.on('destroy', () => window.removeEventListener('resize', resize));
 
 /**
  * @param {pc.Color} color - Material diffuse color.
@@ -72,7 +64,6 @@ let timeLeft = GAME_DURATION;
 let gameOver = false;
 /** @type {pc.Entity | null} */
 let player = null;
-
 /** @type {{ x: number, z: number }} */
 const touchInput = { x: 0, z: 0 };
 let restartQueued = false;
@@ -82,6 +73,7 @@ let restartQueued = false;
  */
 function createTouchJoystick() {
     const base = document.createElement('div');
+    base.id = 'joystick';
     base.style.cssText = [
         'position:fixed',
         'left:max(16px, env(safe-area-inset-left))',
@@ -92,8 +84,7 @@ function createTouchJoystick() {
         'background:rgba(255,255,255,0.12)',
         'border:2px solid rgba(255,255,255,0.35)',
         'z-index:1000',
-        'touch-action:none',
-        'pointer-events:auto'
+        'touch-action:none'
     ].join(';');
 
     const knob = document.createElement('div');
@@ -107,8 +98,7 @@ function createTouchJoystick() {
         'border-radius:50%',
         'background:rgba(120,190,255,0.85)',
         'border:2px solid rgba(255,255,255,0.8)',
-        'transform:translate(0,0)',
-        'touch-action:none'
+        'transform:translate(0,0)'
     ].join(';');
     base.appendChild(knob);
     document.body.appendChild(base);
@@ -116,10 +106,6 @@ function createTouchJoystick() {
     const radius = 38;
     let activeTouchId = null;
 
-    /**
-     * @param {number} clientX - Touch or pointer X.
-     * @param {number} clientY - Touch or pointer Y.
-     */
     const updateKnob = (clientX, clientY) => {
         const rect = base.getBoundingClientRect();
         const centerX = rect.left + rect.width * 0.5;
@@ -143,20 +129,14 @@ function createTouchJoystick() {
         touchInput.z = 0;
     };
 
-    /**
-     * @param {TouchEvent} event - Touch start/move event.
-     */
-    const onTouchStart = (event) => {
+    base.addEventListener('touchstart', (event) => {
         event.preventDefault();
         const touch = event.changedTouches[0];
         activeTouchId = touch.identifier;
         updateKnob(touch.clientX, touch.clientY);
-    };
+    }, { passive: false });
 
-    /**
-     * @param {TouchEvent} event - Touch move event.
-     */
-    const onTouchMove = (event) => {
+    base.addEventListener('touchmove', (event) => {
         event.preventDefault();
         for (let i = 0; i < event.changedTouches.length; i++) {
             const touch = event.changedTouches[i];
@@ -164,32 +144,24 @@ function createTouchJoystick() {
                 updateKnob(touch.clientX, touch.clientY);
             }
         }
-    };
+    }, { passive: false });
 
-    base.addEventListener('touchstart', onTouchStart, { passive: false });
-    base.addEventListener('touchmove', onTouchMove, { passive: false });
     base.addEventListener('touchend', resetKnob);
     base.addEventListener('touchcancel', resetKnob);
 
-    return {
-        destroy: () => {
-            base.remove();
-        }
-    };
+    return { destroy: () => base.remove() };
 }
 
 const touchJoystick = IS_TOUCH_DEVICE ? createTouchJoystick() : null;
-app.on('destroy', () => {
-    touchJoystick?.destroy();
-});
+app.on('destroy', () => touchJoystick?.destroy());
 
 /**
  * @param {pc.Entity} screen - UI screen entity.
  * @param {pc.Asset} font - Font asset.
  * @param {string} name - Entity name.
  * @param {string} text - Initial label text.
- * @param {number} anchorY - Vertical anchor (0 top, 1 bottom).
- * @param {number} fontSize - Font size in pixels.
+ * @param {number} anchorY - Vertical anchor.
+ * @param {number} fontSize - Font size.
  * @returns {pc.Entity} Text entity.
  */
 function createHudText(screen, font, name, text, anchorY, fontSize) {
@@ -215,10 +187,7 @@ function createHudText(screen, font, name, text, anchorY, fontSize) {
  */
 function spawnCollectible(position) {
     const cube = new pc.Entity('collectible');
-    cube.addComponent('render', {
-        type: 'box',
-        material: collectibleMaterial
-    });
+    cube.addComponent('render', { type: 'box', material: collectibleMaterial });
     cube.setLocalScale(0.7, 0.7, 0.7);
     cube.setPosition(position);
     app.root.addChild(cube);
@@ -226,9 +195,6 @@ function spawnCollectible(position) {
     return cube;
 }
 
-/**
- * @returns {void}
- */
 function resetCollectibles() {
     collectibles.splice(0).forEach((entity) => entity.destroy());
     for (let i = 0; i < TOTAL_COLLECTIBLES; i++) {
@@ -240,9 +206,6 @@ function resetCollectibles() {
     }
 }
 
-/**
- * @returns {void}
- */
 function restartGame() {
     score = 0;
     timeLeft = GAME_DURATION;
@@ -252,17 +215,12 @@ function restartGame() {
     resetCollectibles();
 }
 
-const assetListLoader = new pc.AssetListLoader(Object.values(assets), app.assets);
-assetListLoader.load(() => {
+new pc.AssetListLoader(Object.values(assets), app.assets).load(() => {
     app.start();
-
     app.scene.ambientLight = new pc.Color(0.35, 0.35, 0.4);
 
     const floor = new pc.Entity('floor');
-    floor.addComponent('render', {
-        type: 'box',
-        material: floorMaterial
-    });
+    floor.addComponent('render', { type: 'box', material: floorMaterial });
     floor.setLocalScale(ARENA_HALF * 2 + 2, 0.2, ARENA_HALF * 2 + 2);
     floor.setPosition(0, -0.1, 0);
     app.root.addChild(floor);
@@ -270,34 +228,22 @@ assetListLoader.load(() => {
     const wallThickness = 0.4;
     const wallHeight = 1.2;
     const wallSpan = ARENA_HALF * 2 + 2;
-    const wallPositions = [
-        [0, wallHeight * 0.5, ARENA_HALF + 1],
-        [0, wallHeight * 0.5, -ARENA_HALF - 1],
-        [ARENA_HALF + 1, wallHeight * 0.5, 0],
-        [-ARENA_HALF - 1, wallHeight * 0.5, 0]
+    const wallData = [
+        { pos: [0, wallHeight * 0.5, ARENA_HALF + 1], scale: [wallSpan, wallHeight, wallThickness] },
+        { pos: [0, wallHeight * 0.5, -ARENA_HALF - 1], scale: [wallSpan, wallHeight, wallThickness] },
+        { pos: [ARENA_HALF + 1, wallHeight * 0.5, 0], scale: [wallThickness, wallHeight, wallSpan] },
+        { pos: [-ARENA_HALF - 1, wallHeight * 0.5, 0], scale: [wallThickness, wallHeight, wallSpan] }
     ];
-    const wallScales = [
-        [wallSpan, wallHeight, wallThickness],
-        [wallSpan, wallHeight, wallThickness],
-        [wallThickness, wallHeight, wallSpan],
-        [wallThickness, wallHeight, wallSpan]
-    ];
-    wallPositions.forEach((position, index) => {
-        const wall = new pc.Entity(`wall-${index}`);
-        wall.addComponent('render', {
-            type: 'box',
-            material: wallMaterial
-        });
-        wall.setLocalScale(...wallScales[index]);
-        wall.setPosition(...position);
-        app.root.addChild(wall);
+    wallData.forEach((wall, index) => {
+        const entity = new pc.Entity(`wall-${index}`);
+        entity.addComponent('render', { type: 'box', material: wallMaterial });
+        entity.setLocalScale(...wall.scale);
+        entity.setPosition(...wall.pos);
+        app.root.addChild(entity);
     });
 
     player = new pc.Entity('player');
-    player.addComponent('render', {
-        type: 'box',
-        material: playerMaterial
-    });
+    player.addComponent('render', { type: 'box', material: playerMaterial });
     player.setLocalScale(0.9, 0.9, 0.9);
     player.setPosition(0, 0.5, 0);
     app.root.addChild(player);
@@ -330,29 +276,26 @@ assetListLoader.load(() => {
     });
     app.root.addChild(screen);
 
-    const controlHint = IS_TOUCH_DEVICE ? 'Use the joystick to move' : 'WASD to move';
+    const controlHint = IS_TOUCH_DEVICE ? 'Use o joystick' : 'WASD para mover';
     const titleText = createHudText(screen, assets.font, 'title', `Collect Cubes — ${controlHint}`, 0.08, 28);
     const scoreText = createHudText(screen, assets.font, 'score', 'Score: 0', 0.14, 36);
     const timerText = createHudText(screen, assets.font, 'timer', `Time: ${GAME_DURATION}`, 0.2, 36);
     const statusText = createHudText(screen, assets.font, 'status', '', 0.5, 48);
-    statusText.element.align = pc.Vec2.ZERO;
     statusText.element.anchor = new pc.Vec4(0.5, 0.5, 0.5, 0.5);
 
     resetCollectibles();
 
     if (IS_TOUCH_DEVICE) {
         canvas.addEventListener('touchend', () => {
-            if (gameOver) {
-                restartQueued = true;
-            }
+            if (gameOver) restartQueued = true;
         }, { passive: true });
     }
 
     app.on('update', (/** @type {number} */ dt) => {
         const keyboard = app.keyboard;
-
         if (keyboard.wasPressed(pc.KEY_SPACE) || restartQueued) {
             restartGame();
+            scoreText.element.text = 'Score: 0';
         }
 
         if (!gameOver) {
@@ -360,8 +303,8 @@ assetListLoader.load(() => {
             if (timeLeft <= 0) {
                 gameOver = true;
                 statusText.element.text = IS_TOUCH_DEVICE ?
-                    'Time up! Tap the screen to restart' :
-                    'Time up! Press SPACE to restart';
+                    'Tempo esgotado! Toque para reiniciar' :
+                    'Tempo esgotado! Pressione ESPAÇO';
             }
 
             const move = new pc.Vec3();
@@ -369,13 +312,12 @@ assetListLoader.load(() => {
             if (keyboard.isPressed(pc.KEY_S) || keyboard.isPressed(pc.KEY_DOWN)) move.z += 1;
             if (keyboard.isPressed(pc.KEY_A) || keyboard.isPressed(pc.KEY_LEFT)) move.x -= 1;
             if (keyboard.isPressed(pc.KEY_D) || keyboard.isPressed(pc.KEY_RIGHT)) move.x += 1;
-
-            if (IS_TOUCH_DEVICE && (touchInput.x !== 0 || touchInput.z !== 0)) {
+            if (IS_TOUCH_DEVICE && (touchInput.x || touchInput.z)) {
                 move.x += touchInput.x;
                 move.z += touchInput.z;
             }
 
-            if (move.lengthSq() > 0) {
+            if (move.lengthSq() > 0 && player) {
                 move.normalize().mulScalar(PLAYER_SPEED * dt);
                 const position = player.getPosition().add(move);
                 position.x = pc.math.clamp(position.x, -ARENA_HALF, ARENA_HALF);
@@ -383,20 +325,21 @@ assetListLoader.load(() => {
                 player.setPosition(position);
             }
 
-            const playerPos = player.getPosition();
-            for (let i = collectibles.length - 1; i >= 0; i--) {
-                const collectible = collectibles[i];
-                if (playerPos.distance(collectible.getPosition()) <= COLLECT_RADIUS) {
-                    collectible.destroy();
-                    collectibles.splice(i, 1);
-                    score++;
-                    scoreText.element.text = `Score: ${score}`;
-
-                    if (collectibles.length === 0) {
-                        gameOver = true;
-                        statusText.element.text = IS_TOUCH_DEVICE ?
-                            `You win! Score: ${score}. Tap to restart` :
-                            `You win! Score: ${score}. Press SPACE to restart`;
+            if (player) {
+                const playerPos = player.getPosition();
+                for (let i = collectibles.length - 1; i >= 0; i--) {
+                    const collectible = collectibles[i];
+                    if (playerPos.distance(collectible.getPosition()) <= COLLECT_RADIUS) {
+                        collectible.destroy();
+                        collectibles.splice(i, 1);
+                        score++;
+                        scoreText.element.text = `Score: ${score}`;
+                        if (!collectibles.length) {
+                            gameOver = true;
+                            statusText.element.text = IS_TOUCH_DEVICE ?
+                                `Você venceu! Score: ${score}. Toque para reiniciar` :
+                                `Você venceu! Score: ${score}. Pressione ESPAÇO`;
+                        }
                     }
                 }
             }
