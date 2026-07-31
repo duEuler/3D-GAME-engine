@@ -6,7 +6,7 @@ import {
     renderColorPicker, renderLobbyPlayers, renderResultsList
 } from './ui/menu-controller.mjs';
 
-const AUTH_VERSION = '13';
+const AUTH_VERSION = '14';
 
 /** @type {typeof import('./debug-panel.mjs') | null} */
 let debug = null;
@@ -46,6 +46,8 @@ let bestScores = {};
 let playInProgress = false;
 /** @type {boolean} */
 let isReady = false;
+/** @type {string} */
+let launchingRoomCode = '';
 /** @type {ReturnType<typeof setInterval> | null} */
 let matchmakingInterval = null;
 
@@ -404,11 +406,14 @@ async function launchMultiplayerGame(code) {
     if (playInProgress) return;
     playInProgress = true;
     try {
+        debug?.bootLog('▶ Multiplayer...');
+        debug?.showBootShell();
         const { loadStartGame } = await import('./engine-loader.mjs');
         await authApi?.ensureSignedIn();
         hideMenu();
         stopRoomListener?.();
         const startGame = await loadStartGame(debug);
+        debug?.setBootStep('engine', 'ok', 'Motor 3D — OK');
         debug?.hideBootShell();
         const custom = appState.customization || loadCustomization();
         await startGame({
@@ -432,7 +437,12 @@ async function launchMultiplayerGame(code) {
     } catch (error) {
         playInProgress = false;
         forceShowMenu();
+        if (appState.roomCode) {
+            showScreen('lobby');
+            setupLobbyListener(appState.roomCode);
+        }
         showError(error, 'Multiplayer');
+        debug?.showErrorDialog(error, 'Multiplayer');
     }
 }
 

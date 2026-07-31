@@ -8,6 +8,36 @@ let activeCleanup = null;
 let hasSavedCurrentRun = false;
 
 /**
+ * Destrói o app PlayCanvas ativo com segurança (evita double-destroy).
+ */
+function destroyActiveApp() {
+    if (!activeApp) return;
+    try {
+        activeApp.destroy();
+    } catch {
+        // App já destruído ou canvas indisponível
+    }
+    activeApp = null;
+}
+
+/**
+ * Limpa sessão anterior antes de iniciar nova partida.
+ */
+function runPendingCleanup() {
+    if (activeCleanup) {
+        const fn = activeCleanup;
+        activeCleanup = null;
+        try {
+            fn();
+        } catch {
+            destroyActiveApp();
+        }
+        return;
+    }
+    destroyActiveApp();
+}
+
+/**
  * @typedef {object} StartGameOptions
  * @property {string} levelId
  * @property {import('./characters.mjs').PlayerCustomization} customization
@@ -44,10 +74,11 @@ export async function startGame(options) {
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('application-canvas'));
     const backButton = document.getElementById('btn-back-menu');
 
-    if (activeCleanup) {
-        activeCleanup();
-        activeCleanup = null;
+    if (!canvas) {
+        throw new Error('Canvas do jogo não encontrado. Recarregue a página.');
     }
+
+    runPendingCleanup();
 
     hasSavedCurrentRun = false;
     window.focus();
@@ -232,13 +263,16 @@ export async function startGame(options) {
 
     function cleanup() {
         roomUnsubscribe?.();
+        roomUnsubscribe = null;
         backButton?.removeEventListener('click', onBackClick);
         touchJoystick?.destroy();
         window.removeEventListener('resize', resize);
-        app.destroy();
-        activeApp = null;
+        if (activeApp === app) {
+            destroyActiveApp();
+        }
         document.getElementById('joystick')?.remove();
         if (backButton) backButton.hidden = true;
+        activeCleanup = null;
     }
 
     function finishAndReturnToMenu() {

@@ -497,6 +497,12 @@ button:not(.primary) {
     flex-shrink: 0;
 }
 
+.lobby-player__status {
+    margin-left: auto;
+    font-size: 0.85rem;
+    color: #9db0c7;
+}
+
 .lobby-error {
     margin: 8px 0;
     padding: 10px 12px;
