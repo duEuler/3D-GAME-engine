@@ -85,7 +85,9 @@ export async function signInWithGoogle() {
             await signInWithRedirect(authClient, provider);
             return;
         }
-        return await signInWithPopup(authClient, provider);
+        const result = await signInWithPopup(authClient, provider);
+        currentUser = result.user;
+        return result;
     } catch (error) {
         const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
         if (code === 'auth/unauthorized-domain') {
@@ -107,18 +109,26 @@ export async function signInWithGoogle() {
  */
 export async function signInAsGuest() {
     const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
-    return signInAnonymously(await getAuthClient());
+    const result = await signInAnonymously(await getAuthClient());
+    currentUser = result.user;
+    return result;
 }
 
 /** @returns {Promise<void>} */
 export async function signOutUser() {
     const { signOut } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
-    return signOut(await getAuthClient());
+    await signOut(await getAuthClient());
+    currentUser = null;
 }
 
 /** @returns {import('firebase/auth').User | null} */
 export function getCurrentUser() {
     return currentUser;
+}
+
+/** @returns {boolean} */
+export function isSignedIn() {
+    return currentUser !== null;
 }
 
 /**
@@ -130,7 +140,13 @@ export async function ensureSignedIn(timeoutMs = 25000) {
         return currentUser;
     }
 
-    await getAuthClient();
-    const result = await withTimeout(signInAsGuest(), timeoutMs, 'Autenticação convidado');
+    const authClient = await getAuthClient();
+    const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
+    const result = await withTimeout(
+        signInAnonymously(authClient),
+        timeoutMs,
+        'Autenticação convidado'
+    );
+    currentUser = result.user;
     return result.user;
 }

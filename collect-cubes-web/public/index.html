@@ -182,6 +182,13 @@
     <div id="error-dialog" hidden>
         <h2 id="error-dialog-title">Erro</h2>
         <pre id="error-dialog-body"></pre>
+        <div id="error-dialog-auth" class="error-dialog__auth" hidden>
+            <p>Para usar esta função, entre com uma conta:</p>
+            <div class="error-dialog__auth-actions">
+                <button id="error-dialog-google" type="button" class="primary">Entrar com Google</button>
+                <button id="error-dialog-guest" type="button">Jogar como convidado</button>
+            </div>
+        </div>
         <div id="error-dialog-actions">
             <button id="error-dialog-copy" type="button">Copiar erro</button>
             <button id="error-dialog-debug" type="button">Diagnóstico</button>
@@ -198,6 +205,14 @@
                     <h1>Collect Cubes</h1>
                     <p id="user-label">Conectando...</p>
                     <p id="online-label" class="muted">0 online</p>
+                </div>
+            </div>
+
+            <div id="auth-banner" class="auth-banner" hidden>
+                <p><strong>Login necessário</strong> para multiplayer e ranking.</p>
+                <div class="auth-banner__actions">
+                    <button id="banner-btn-google" type="button" class="primary">Entrar com Google</button>
+                    <button id="banner-btn-guest" type="button">Jogar como convidado</button>
                 </div>
             </div>
 
@@ -331,14 +346,14 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=11');
+            const debug = await import('./js/debug-panel.mjs?v=12');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            const bootstrap = await import('./js/bootstrap.mjs?v=11');
+            const bootstrap = await import('./js/bootstrap.mjs?v=12');
             debug.setBootStep('modules', 'loading');
             debug.bootLog('Carregando bootstrap...');
             await bootstrap.initApp(debug);

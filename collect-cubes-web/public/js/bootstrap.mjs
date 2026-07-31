@@ -6,7 +6,7 @@ import {
     renderColorPicker, renderLobbyPlayers, renderResultsList
 } from './ui/menu-controller.mjs';
 
-const AUTH_VERSION = '11';
+const AUTH_VERSION = '12';
 
 /** @type {typeof import('./debug-panel.mjs') | null} */
 let debug = null;
@@ -54,7 +54,85 @@ let matchmakingInterval = null;
  * @param {string} [context]
  */
 function showError(error, context = '') {
+    if (debug?.isAuthError?.(error)) {
+        debug.showAuthPrompt(error instanceof Error ? error.message : String(error));
+        return;
+    }
     debug?.bootError(error, context);
+    debug?.showErrorDialog(error, context);
+}
+
+/**
+ * Atualiza banner de login no menu principal.
+ */
+function updateAuthBanner() {
+    const banner = document.getElementById('auth-banner');
+    const signedIn = authApi?.isSignedIn?.() ?? false;
+    if (banner) banner.hidden = signedIn;
+}
+
+/**
+ * Garante login antes de ações online. Mostra diálogo amigável se falhar.
+ * @returns {Promise<import('firebase/auth').User | null>}
+ */
+async function ensureAuthForOnline() {
+    if (!authApi) {
+        debug?.showAuthPrompt('Serviços ainda carregando. Aguarde ou toque em Continuar na tela inicial.');
+        return null;
+    }
+
+    if (authApi.isSignedIn()) {
+        updateAuthBanner();
+        return authApi.getCurrentUser();
+    }
+
+    try {
+        const user = await authApi.ensureSignedIn();
+        updateAuthBanner();
+        renderUser(user);
+        return user;
+    } catch (error) {
+        updateAuthBanner();
+        showError(error, 'Login');
+        return null;
+    }
+}
+
+/**
+ * Login via Google com feedback.
+ */
+async function handleGoogleLogin() {
+    if (!authApi || !firestoreApi) {
+        debug?.showAuthPrompt('Aguarde o carregamento ou recarregue a página.');
+        return;
+    }
+    const result = await authApi.signInWithGoogle();
+    if (!result) {
+        debug?.bootLog('Redirecionando para Google...');
+        return;
+    }
+    await firestoreApi.upsertUserProfile(result.user);
+    await setupPresence();
+    await loadProgress();
+    updateAuthBanner();
+    renderUser(result.user);
+    debug?.bootLog(`Login OK — ${result.user.email || 'conta Google'}`);
+}
+
+/**
+ * Login convidado com feedback.
+ */
+async function handleGuestLogin() {
+    if (!authApi || !firestoreApi) {
+        debug?.showAuthPrompt('Aguarde o carregamento ou recarregue a página.');
+        return;
+    }
+    const result = await authApi.signInAsGuest();
+    await firestoreApi.upsertUserProfile(result.user);
+    await setupPresence();
+    updateAuthBanner();
+    renderUser(result.user);
+    debug?.bootLog('Login convidado OK');
 }
 
 /**
@@ -64,12 +142,14 @@ function renderUser(user) {
     const logoutBtn = document.getElementById('btn-logout');
     if (!userLabel || !logoutBtn) return;
     if (!user) {
-        userLabel.textContent = 'Não conectado';
+        userLabel.textContent = 'Não conectado — faça login para multiplayer';
         logoutBtn.hidden = true;
+        updateAuthBanner();
         return;
     }
     userLabel.textContent = user.isAnonymous ? 'Convidado' : (user.displayName || user.email || 'Jogador');
     logoutBtn.hidden = false;
+    updateAuthBanner();
 }
 
 /**
@@ -334,7 +414,9 @@ async function launchMultiplayerGame(code) {
 
 async function createRoom() {
     if (!roomApi) return;
-    await authApi?.ensureSignedIn();
+    const user = await ensureAuthForOnline();
+    if (!user) return;
+
     let code = roomApi.generateRoomCode();
     const info = getPlayerInfo();
     await roomApi.createRoom(code, appState.selectedLevelId, info);
@@ -346,7 +428,9 @@ async function createRoom() {
 
 async function joinRoomByCode(code) {
     if (!roomApi) return;
-    await authApi?.ensureSignedIn();
+    const user = await ensureAuthForOnline();
+    if (!user) return;
+
     const info = getPlayerInfo();
     await roomApi.joinRoom(code.toUpperCase(), info);
     appState.roomCode = code.toUpperCase();
@@ -357,9 +441,14 @@ async function joinRoomByCode(code) {
 
 async function startMatchmaking() {
     if (!roomApi) return;
-    await authApi?.ensureSignedIn();
+    const user = await ensureAuthForOnline();
+    if (!user) return;
+
     const statusEl = document.getElementById('matchmaking-status');
-    if (statusEl) statusEl.hidden = false;
+    if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = 'Buscando oponente...';
+    }
 
     const info = getPlayerInfo();
     await roomApi.joinMatchmaking(appState.selectedLevelId, info);
@@ -397,7 +486,9 @@ function wireUi() {
         await launchSoloGame();
     }));
 
-    document.getElementById('btn-multiplayer')?.addEventListener('click', safeClick(debug, 'Multiplayer', () => {
+    document.getElementById('btn-multiplayer')?.addEventListener('click', safeClick(debug, 'Multiplayer', async () => {
+        const user = await ensureAuthForOnline();
+        if (!user) return;
         appState.selectedMode = 'multiplayer';
         updateModeScreen();
         showScreen('mode');
@@ -479,22 +570,14 @@ function wireUi() {
         }));
     });
 
-    document.getElementById('btn-google')?.addEventListener('click', safeClick(debug, 'Login Google', async () => {
-        const result = await authApi.signInWithGoogle();
-        if (!result) { debug.bootLog('Redirecionando para Google...'); return; }
-        await firestoreApi.upsertUserProfile(result.user);
-        await setupPresence();
-        await loadProgress();
-    }));
-
-    document.getElementById('btn-guest')?.addEventListener('click', safeClick(debug, 'Login convidado', async () => {
-        const result = await authApi.signInAsGuest();
-        await firestoreApi.upsertUserProfile(result.user);
-        await setupPresence();
-    }));
+    document.getElementById('btn-google')?.addEventListener('click', safeClick(debug, 'Login Google', () => handleGoogleLogin()));
+    document.getElementById('btn-guest')?.addEventListener('click', safeClick(debug, 'Login convidado', () => handleGuestLogin()));
+    document.getElementById('banner-btn-google')?.addEventListener('click', safeClick(debug, 'Login Google', () => handleGoogleLogin()));
+    document.getElementById('banner-btn-guest')?.addEventListener('click', safeClick(debug, 'Login convidado', () => handleGuestLogin()));
 
     document.getElementById('btn-logout')?.addEventListener('click', safeClick(debug, 'Logout', async () => {
         await authApi.signOutUser();
+        updateAuthBanner();
     }));
 }
 
@@ -505,10 +588,16 @@ export async function initApp(debugApi) {
     debug = debugApi;
     appState.customization = loadCustomization();
 
+    debug.setAuthPromptCallbacks?.({
+        onGoogle: () => handleGoogleLogin(),
+        onGuest: () => handleGuestLogin()
+    });
+
     safeAction = await import('./safe-action.mjs');
 
     try {
         wireUi();
+        debug.setBootStep('modules', 'ok');
 
         debug.setBootStep('firebase', 'loading');
         await import('./firebase/core.mjs?v=' + AUTH_VERSION);
@@ -550,13 +639,17 @@ export async function initApp(debugApi) {
 
         await loadProgress();
         await refreshLeaderboard();
+        updateAuthBanner();
         markAppReady();
     } catch (error) {
+        debug.setBootStep('modules', 'ok');
         debug.setBootStep('firebase', 'error');
         debug.setBootStep('auth', 'error');
         if (continueButton) continueButton.hidden = false;
+        updateAuthBanner();
         debug.bootError(error, 'Inicialização');
         debug.showErrorDialog(error, 'Inicialização');
+        debug.bootLog('Você pode tocar Continuar e fazer login manualmente.', 'warn');
     }
 }
 

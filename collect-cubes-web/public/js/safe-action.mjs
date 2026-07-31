@@ -25,6 +25,10 @@ export async function runSafe(debug, label, fn) {
         await fn();
         debug.bootLog(`✓ ${label}`);
     } catch (error) {
+        if (debug.isAuthError?.(error)) {
+            debug.showAuthPrompt(error instanceof Error ? error.message : String(error));
+            return;
+        }
         debug.bootError(error, label);
         debug.showErrorDialog(error, label);
     }

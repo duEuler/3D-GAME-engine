@@ -33,6 +33,30 @@ const bootShellBar = document.getElementById('boot-shell-bar');
 const bootShellCopy = document.getElementById('boot-shell-copy');
 const copyErrorBtn = document.getElementById('btn-copy-error');
 
+/** @type {(() => void) | null} */
+let onAuthGuestCallback = null;
+/** @type {(() => void) | null} */
+let onAuthGoogleCallback = null;
+
+/**
+ * Registra callbacks para botões de login no diálogo de erro.
+ * @param {{ onGuest?: () => void, onGoogle?: () => void }} callbacks
+ */
+export function setAuthPromptCallbacks(callbacks) {
+    onAuthGuestCallback = callbacks.onGuest ?? null;
+    onAuthGoogleCallback = callbacks.onGoogle ?? null;
+}
+
+/**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isAuthError(error) {
+    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    return msg.includes('login') || msg.includes('faça login') || msg.includes('autentic') ||
+        msg.includes('não conectado') || msg.includes('signed in');
+}
+
 let errorCount = 0;
 let panelOpen = false;
 let bootShellVisible = true;
@@ -284,6 +308,14 @@ function wireUi() {
     document.getElementById('error-dialog-copy')?.addEventListener('click', () => copyReport());
     document.getElementById('error-dialog-close')?.addEventListener('click', () => hideErrorDialog());
     document.getElementById('error-dialog-debug')?.addEventListener('click', () => openPanel());
+    document.getElementById('error-dialog-google')?.addEventListener('click', () => {
+        hideErrorDialog();
+        onAuthGoogleCallback?.();
+    });
+    document.getElementById('error-dialog-guest')?.addEventListener('click', () => {
+        hideErrorDialog();
+        onAuthGuestCallback?.();
+    });
     document.getElementById('btn-debug-copy')?.addEventListener('click', () => copyReport());
 }
 
@@ -295,6 +327,7 @@ export function showErrorDialog(error, context = '') {
     const dialog = document.getElementById('error-dialog');
     const body = document.getElementById('error-dialog-body');
     const title = document.getElementById('error-dialog-title');
+    const authSection = document.getElementById('error-dialog-auth');
     if (!dialog || !body) {
         openPanel();
         return;
@@ -303,11 +336,26 @@ export function showErrorDialog(error, context = '') {
     const base = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error && error.stack ? `\n\n${error.stack}` : '';
     const text = context ? `${context}:\n${base}${stack}` : `${base}${stack}`;
+    const needsAuth = isAuthError(error);
 
-    if (title) title.textContent = context ? `Erro: ${context}` : 'Erro';
-    body.textContent = text;
+    if (title) {
+        title.textContent = needsAuth ? 'Login necessário' : (context ? `Erro: ${context}` : 'Erro');
+    }
+    body.textContent = needsAuth ?
+        `${base}\n\nEscolha uma opção abaixo para continuar:` :
+        text;
+
+    if (authSection) authSection.hidden = !needsAuth;
     dialog.hidden = false;
     showCopyButtons();
+}
+
+/**
+ * Exibe diálogo pedindo login (sem erro técnico).
+ * @param {string} [reason]
+ */
+export function showAuthPrompt(reason = 'Para usar o multiplayer, faça login primeiro.') {
+    showErrorDialog(new Error(reason), 'Login');
 }
 
 function hideErrorDialog() {
@@ -346,18 +394,12 @@ export function continueToMenu() {
         if (toggleButton) toggleButton.hidden = false;
 
         bootLog('✓ Menu visível — toque em Jogar');
-
-        import('./engine-loader.mjs').then((loader) => {
-            loader.probeEngineFile({ bootLog, bootError, setBootStep });
-        }).catch((err) => {
-            bootError(err, 'Verificação motor');
-            showErrorDialog(err, 'Verificação motor');
-        });
     } catch (error) {
         bootError(error, 'Continuar');
         showErrorDialog(error, 'Continuar');
         showBootShell();
-        if (continueButton) continueButton.hidden = false;
+        const contBtn = document.getElementById('boot-shell-continue');
+        if (contBtn) contBtn.hidden = false;
     }
 }
 
@@ -403,13 +445,21 @@ const WATCHDOG_MS = [8000, 16000, 30000];
 WATCHDOG_MS.forEach((ms) => {
     setTimeout(() => {
         const step = bootSteps.modules;
-        if (step?.status !== 'ok' && step?.status !== 'error') {
-            bootLog(`Ainda carregando há ${Math.round(ms / 1000)}s — conexão lenta?`, 'warn');
-        }
-        if (bootSteps.firebase?.status === 'loading') {
-            bootLog(`Firebase ainda baixando (${Math.round(ms / 1000)}s)...`, 'warn');
+        if (step?.status === 'loading') {
+            const pending = Object.entries(bootSteps)
+                .filter(([, s]) => s.status === 'loading' || s.status === 'pending')
+                .map(([id]) => id)
+                .join(', ');
+            bootLog(
+                `Carregamento lento (${Math.round(ms / 1000)}s). Pendente: ${pending || 'módulos'}. ` +
+                'Toque em Continuar se o botão aparecer, ou verifique sua conexão.',
+                'warn'
+            );
         }
     }, ms);
 });
 
-window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, continueToMenu, showErrorDialog, entries };
+window.collectCubesDebug = {
+    bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell,
+    copyReport, continueToMenu, showErrorDialog, showAuthPrompt, isAuthError, setAuthPromptCallbacks, entries
+};

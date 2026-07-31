@@ -531,3 +531,52 @@ button:not(.primary) {
     font-size: 0.85rem;
     color: #9db0c7;
 }
+
+.auth-banner {
+    margin: 0 0 12px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 107, 53, 0.12);
+    border: 1px solid rgba(255, 107, 53, 0.4);
+}
+
+.auth-banner p {
+    margin: 0 0 10px;
+    color: #ffc9a8;
+    font-size: 0.9rem;
+}
+
+.auth-banner__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.auth-banner__actions button {
+    margin: 0;
+    font-size: 0.9rem;
+    padding: 12px;
+}
+
+.error-dialog__auth {
+    margin: 12px 0;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(78, 161, 255, 0.1);
+    border: 1px solid rgba(78, 161, 255, 0.3);
+}
+
+.error-dialog__auth p {
+    margin: 0 0 10px;
+    color: #d7e6ff;
+    font-size: 0.95rem;
+}
+
+.error-dialog__auth-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.error-dialog__auth-actions button {
+    width: 100%;
+}
