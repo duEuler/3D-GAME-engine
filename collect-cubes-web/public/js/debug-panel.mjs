@@ -283,33 +283,85 @@ function wireUi() {
     document.getElementById('btn-debug-close')?.addEventListener('click', () => closePanel());
     document.getElementById('boot-shell-debug')?.addEventListener('click', () => openPanel());
     bootShellCopy?.addEventListener('click', () => copyReport());
-    document.getElementById('boot-shell-continue')?.addEventListener('click', () => continueToMenu());
+    document.getElementById('error-dialog-copy')?.addEventListener('click', () => copyReport());
+    document.getElementById('error-dialog-close')?.addEventListener('click', () => hideErrorDialog());
+    document.getElementById('error-dialog-debug')?.addEventListener('click', () => openPanel());
     document.getElementById('btn-debug-copy')?.addEventListener('click', () => copyReport());
+}
+
+/**
+ * @param {unknown} error - Error object.
+ * @param {string} [context] - Error context.
+ */
+export function showErrorDialog(error, context = '') {
+    const dialog = document.getElementById('error-dialog');
+    const body = document.getElementById('error-dialog-body');
+    const title = document.getElementById('error-dialog-title');
+    if (!dialog || !body) {
+        openPanel();
+        return;
+    }
+
+    const base = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error && error.stack ? `\n\n${error.stack}` : '';
+    const text = context ? `${context}:\n${base}${stack}` : `${base}${stack}`;
+
+    if (title) title.textContent = context ? `Erro: ${context}` : 'Erro';
+    body.textContent = text;
+    dialog.hidden = false;
+    showCopyButtons();
+    openPanel();
+}
+
+function hideErrorDialog() {
+    const dialog = document.getElementById('error-dialog');
+    if (dialog) dialog.hidden = true;
 }
 
 /**
  * @returns {void}
  */
 export function continueToMenu() {
-    hideBootShell();
-    document.body.classList.add('menu-open');
-    document.body.classList.remove('booting');
+    try {
+        bootLog('Continuar — abrindo menu...');
+        hideBootShell();
+        document.body.classList.add('menu-open');
+        document.body.classList.remove('booting');
 
-    const menu = document.getElementById('app-menu');
-    if (menu) menu.hidden = false;
+        const menu = document.getElementById('app-menu');
+        if (!menu) {
+            throw new Error('#app-menu não existe no DOM');
+        }
 
-    if (bootStatus) {
-        bootStatus.hidden = false;
-        bootStatus.textContent = 'Menu aberto — toque em Jogar';
+        menu.hidden = false;
+        menu.removeAttribute('hidden');
+        menu.style.cssText = [
+            'position:fixed', 'inset:0', 'z-index:50000',
+            'display:grid', 'place-items:center', 'padding:16px',
+            'background:rgba(8,12,18,0.97)', 'overflow:auto'
+        ].join(';');
+
+        if (bootStatus) {
+            bootStatus.hidden = false;
+            bootStatus.textContent = 'Menu aberto — toque em Jogar';
+        }
+
+        if (toggleButton) toggleButton.hidden = false;
+
+        bootLog('✓ Menu visível — toque em Jogar');
+
+        import('./engine-loader.mjs').then((loader) => {
+            loader.probeEngineFile({ bootLog, bootError, setBootStep });
+        }).catch((err) => {
+            bootError(err, 'Verificação motor');
+            showErrorDialog(err, 'Verificação motor');
+        });
+    } catch (error) {
+        bootError(error, 'Continuar');
+        showErrorDialog(error, 'Continuar');
+        showBootShell();
+        if (continueButton) continueButton.hidden = false;
     }
-
-    bootLog('Menu aberto — toque em Jogar para carregar o motor 3D');
-
-    import('./engine-loader.mjs').then((loader) => {
-        loader.probeEngineFile({ bootLog, bootError, setBootStep });
-    }).catch((error) => {
-        bootError(error, '[Motor] Probe');
-    });
 }
 
 /**
@@ -363,4 +415,4 @@ WATCHDOG_MS.forEach((ms) => {
     }, ms);
 });
 
-window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, continueToMenu, entries };
+window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, continueToMenu, showErrorDialog, entries };

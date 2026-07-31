@@ -29,6 +29,22 @@
         #boot-shell-continue { background: #4ea1ff; color: #081018; }
         #boot-shell-copy { background: #2a3647; color: #fff; }
         #boot-shell-copy[hidden] { display: none !important; }
+        #app-menu { position: fixed; inset: 0; z-index: 50000; display: grid; place-items: center; padding: 16px; background: rgba(8,12,18,0.97); overflow: auto; }
+        #app-menu[hidden] { display: none !important; }
+        #app-menu .panel { width: min(420px,100%); padding: 20px; border-radius: 16px; background: #1a2330; border: 1px solid rgba(255,255,255,0.1); color: #f4f7fb; }
+        #app-menu h1 { margin: 0 0 8px; font-size: 1.8rem; }
+        #app-menu button { border: 0; border-radius: 12px; padding: 14px; font-size: 1rem; font-weight: 600; width: 100%; margin-top: 8px; touch-action: manipulation; }
+        #app-menu .primary { background: #4ea1ff; color: #081018; }
+        #app-menu button:not(.primary) { background: #2a3647; color: #fff; }
+        #error-dialog { position: fixed; inset: 0; z-index: 200000; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 16px; background: rgba(5,8,12,0.98); color: #fff; }
+        #error-dialog[hidden] { display: none !important; }
+        #error-dialog-body { margin: 0; padding: 12px; overflow: auto; background: #1a1010; border: 1px solid #ff8a80; border-radius: 10px; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; color: #ffe3e3; }
+        #error-dialog-actions { display: flex; gap: 8px; }
+        #error-dialog-actions button { flex: 1; min-height: 48px; border: 0; border-radius: 10px; font-weight: 700; }
+        #error-dialog-copy { background: #ff6b35; color: #fff; }
+        #error-dialog-debug { background: #2a3647; color: #fff; }
+        #error-dialog-close { background: #4ea1ff; color: #081018; }
+        #btn-debug { position: fixed; right: 12px; bottom: 12px; z-index: 60000; min-height: 48px; padding: 12px 16px; border: 0; border-radius: 999px; background: #ff6b35; color: #fff; font-weight: 700; }
     </style>
     <link rel="stylesheet" href="./css/style.css">
     <script>
@@ -113,16 +129,6 @@
                         earlyCopyText();
                     }
                 });
-                document.getElementById('boot-shell-continue')?.addEventListener('click', function () {
-                    if (window.collectCubesDebug && window.collectCubesDebug.continueToMenu) {
-                        window.collectCubesDebug.continueToMenu();
-                    } else {
-                        document.getElementById('boot-shell').hidden = true;
-                        document.body.classList.remove('booting');
-                        var menu = document.getElementById('app-menu');
-                        if (menu) menu.hidden = false;
-                    }
-                });
             });
 
             earlyLog('Página HTML carregada');
@@ -171,6 +177,16 @@
         </div>
         <p id="debug-panel-status" class="debug-panel__status">Carregando...</p>
         <pre id="debug-panel-body" class="debug-panel__body"></pre>
+    </div>
+
+    <div id="error-dialog" hidden>
+        <h2 id="error-dialog-title">Erro</h2>
+        <pre id="error-dialog-body"></pre>
+        <div id="error-dialog-actions">
+            <button id="error-dialog-copy" type="button">Copiar erro</button>
+            <button id="error-dialog-debug" type="button">Diagnóstico</button>
+            <button id="error-dialog-close" type="button">Fechar</button>
+        </div>
     </div>
 
     <div id="app-menu" class="overlay" hidden>
@@ -232,14 +248,14 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=5');
+            const debug = await import('./js/debug-panel.mjs?v=6');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            const bootstrap = await import('./js/bootstrap.mjs?v=5');
+            const bootstrap = await import('./js/bootstrap.mjs?v=6');
             debug.setBootStep('modules', 'loading');
             debug.bootLog('Carregando bootstrap...');
             await bootstrap.initApp(debug);
@@ -247,6 +263,8 @@
             debug.bootLog('App carregado');
         } catch (error) {
             fail(error);
+            const debug = window.collectCubesDebug;
+            if (debug?.showErrorDialog) debug.showErrorDialog(error, 'Boot');
         }
     </script>
 </body>
