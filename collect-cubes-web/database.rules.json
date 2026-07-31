@@ -1,0 +1,31 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "collectCubes": {
+      "leaderboards": {
+        "$levelId": {
+          "scores": {
+            "$uid": {
+              ".read": true,
+              ".write": "auth != null && auth.uid == $uid && newData.child('score').isNumber() && newData.child('score').val() >= 0 && (!data.exists() || newData.child('score').val() >= data.child('score').val())"
+            }
+          },
+          "live": {
+            ".read": true,
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid"
+            }
+          }
+        }
+      },
+      "presence": {
+        "$uid": {
+          ".read": true,
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.isNumber()"
+        }
+      }
+    }
+  }
+}
