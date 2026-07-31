@@ -17,6 +17,7 @@ const playButton = document.getElementById('btn-play');
 const googleButton = document.getElementById('btn-google');
 const guestButton = document.getElementById('btn-guest');
 const logoutButton = document.getElementById('btn-logout');
+const errorBanner = document.getElementById('app-error');
 
 /** @type {(() => void) | null} */
 let stopLiveLeaderboard = null;
@@ -26,9 +27,22 @@ let stopOnlineListener = null;
 let stopPresence = null;
 
 /**
+ * @param {unknown} error - Caught error.
+ */
+function showError(error) {
+    if (!errorBanner) return;
+    const message = error instanceof Error ? error.message : String(error);
+    errorBanner.textContent = `Erro: ${message}`;
+    errorBanner.hidden = false;
+    console.error(error);
+}
+
+/**
  * @param {import('firebase/auth').User | null} user - Current user.
  */
 function renderUser(user) {
+    if (!userLabel || !logoutButton) return;
+
     if (!user) {
         userLabel.textContent = 'Não conectado';
         logoutButton.hidden = true;
@@ -44,6 +58,7 @@ function renderUser(user) {
  * @param {Array<{displayName: string, score: number}>} entries - Leaderboard rows.
  */
 function renderLeaderboard(entries) {
+    if (!leaderboardList) return;
     leaderboardList.innerHTML = '';
     if (!entries.length) {
         leaderboardList.innerHTML = '<li>Sem pontuações ainda</li>';
@@ -73,53 +88,79 @@ async function setupPresence() {
 }
 
 function showMenu() {
-    menu.hidden = false;
+    if (menu) menu.hidden = false;
 }
 
 function hideMenu() {
-    menu.hidden = true;
+    if (menu) menu.hidden = true;
 }
 
 playButton?.addEventListener('click', async () => {
-    await ensureSignedIn();
-    hideMenu();
-    await startGame({
-        levelId: 'default',
-        onFinished: () => {
-            showMenu();
-            refreshLeaderboard();
-        }
-    });
+    try {
+        await ensureSignedIn();
+        hideMenu();
+        await startGame({
+            levelId: 'default',
+            onFinished: () => {
+                showMenu();
+                refreshLeaderboard().catch(showError);
+            }
+        });
+    } catch (error) {
+        showMenu();
+        showError(error);
+    }
 });
 
 googleButton?.addEventListener('click', async () => {
-    const result = await signInWithGoogle();
-    await upsertUserProfile(result.user);
-    await setupPresence();
+    try {
+        const result = await signInWithGoogle();
+        await upsertUserProfile(result.user);
+        await setupPresence();
+    } catch (error) {
+        showError(error);
+    }
 });
 
 guestButton?.addEventListener('click', async () => {
-    const result = await signInAsGuest();
-    await upsertUserProfile(result.user);
-    await setupPresence();
+    try {
+        const result = await signInAsGuest();
+        await upsertUserProfile(result.user);
+        await setupPresence();
+    } catch (error) {
+        showError(error);
+    }
 });
 
 logoutButton?.addEventListener('click', async () => {
-    await signOutUser();
+    try {
+        await signOutUser();
+    } catch (error) {
+        showError(error);
+    }
 });
 
 onUserChanged(async (user) => {
     renderUser(user);
     if (user) {
-        await upsertUserProfile(user);
-        await setupPresence();
+        try {
+            await upsertUserProfile(user);
+            await setupPresence();
+        } catch (error) {
+            showError(error);
+        }
     }
 });
 
-stopOnlineListener = subscribeOnlineCount((count) => {
-    onlineLabel.textContent = `${count} online`;
-});
+try {
+    stopOnlineListener = subscribeOnlineCount((count) => {
+        if (onlineLabel) onlineLabel.textContent = `${count} online`;
+    });
 
-await ensureSignedIn();
-showMenu();
-await refreshLeaderboard();
+    await ensureSignedIn();
+    showMenu();
+    await refreshLeaderboard();
+} catch (error) {
+    showMenu();
+    showError(error);
+}

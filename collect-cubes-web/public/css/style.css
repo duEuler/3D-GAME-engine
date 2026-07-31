@@ -33,6 +33,10 @@ body {
     backdrop-filter: blur(8px);
 }
 
+.overlay[hidden] {
+    display: none !important;
+}
+
 .panel {
     width: min(420px, 100%);
     padding: 20px;
@@ -101,4 +105,17 @@ button:not(.primary) {
     background: rgba(20, 28, 38, 0.85);
     color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.error-banner {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 3000;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #7a1f1f;
+    color: #fff;
+    font-size: 0.9rem;
 }
