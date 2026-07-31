@@ -1,76 +1,61 @@
-# Collect Cubes — Web + Firebase
+# Collect Cubes — Jogo Completo
 
-Hosting dedicado do mini-jogo **Collect Cubes** com backend Firebase no projeto `dueuler-be03b`.
+Jogo arcade 3D em PlayCanvas com Firebase: 5 fases, personagens personalizáveis, multiplayer em tempo real e ranking.
 
-## URL de produção
+**Jogue:** https://dueuler-collect-cubes.web.app
 
-- https://dueuler-collect-cubes.web.app
+## Funcionalidades
 
-## Stack Firebase
+- **5 fases** com progressão e desbloqueio por pontuação
+- **4 personagens 3D** personalizáveis (forma + cor)
+- **Modo solo** com ranking persistente
+- **Multiplayer** — criar sala, entrar com código, matchmaking automático
+- **Até 8 jogadores** por sala com sincronização em tempo real
+- **Diagnóstico completo** para debug em produção
 
-| Serviço | Uso |
-|---------|-----|
-| **Authentication** | Google + login anônimo (convidado) |
-| **Firestore** | Perfil, progresso por fase, ranking persistente |
-| **Realtime Database** | Ranking ao vivo + presença online |
-| **Storage** | JSON de fases customizadas e thumbnails (futuro criador) |
-| **Hosting** | Site estático (`dueuler-collect-cubes`) |
+## Documentação
 
-## Modelo de dados
+- [Guia do Jogador (PT-BR)](GUIA-JOGADOR.md)
 
-### Firestore
-
-```
-users/{uid}
-  displayName, photoURL, isAnonymous, updatedAt
-
-users/{uid}/progress/{levelId}
-  bestScore, lastScore, timeLeft, completedAt
-
-leaderboards/{levelId}/scores/{uid}
-  score, displayName, photoURL, updatedAt
-
-levels/{levelId}            # fases oficiais (somente leitura no cliente)
-```
-
-### Realtime Database
-
-```
-collectCubes/leaderboards/{levelId}/scores/{uid}
-collectCubes/presence/{uid}
-```
-
-### Storage
-
-```
-collect-cubes/levels/{uid}/{levelId}.json
-collect-cubes/thumbnails/{uid}/{levelId}.png
-```
-
-## Desenvolvimento local
+## Desenvolvimento
 
 ```bash
-./scripts/build.sh
-npx serve public -l 8080
+cd collect-cubes-web
+./scripts/build.sh    # Gera lib/playcanvas.mjs
+npm test              # 27 testes (níveis, personagens, multiplayer, integração)
 ```
 
-## Deploy
+## Deploy Firebase
 
 ```bash
-./scripts/build.sh
-npx -y firebase-tools@latest deploy --only hosting,firestore:rules,storage,database,auth --project dueuler-be03b
+npx -y firebase-tools@latest deploy \
+  --only hosting,auth,firestore:rules,database,storage \
+  --project dueuler-be03b
 ```
 
 ## Estrutura
 
 ```
-collect-cubes-web/
-  public/
-    js/firebase/     # Auth, Firestore, RTDB, Storage
-    js/bootstrap.mjs # Menu + login + ranking
-    js/game.mjs      # Loop do jogo
-  firestore.rules
-  storage.rules
-  database.rules.json
-  firebase.json
+public/
+  js/
+    levels.mjs          # Configuração das 5 fases
+    characters.mjs      # Personagens e cores
+    game.mjs            # Motor 3D (solo + multiplayer)
+    bootstrap.mjs       # Menu e fluxos
+    multiplayer/
+      room-service.mjs  # Salas RTDB + matchmaking
+    ui/
+      menu-controller.mjs
+  assets/icons/         # Ícones SVG
+test/                   # Testes Node.js
+GUIA-JOGADOR.md         # Guia completo em português
 ```
+
+## Testes
+
+| Arquivo | Cobertura |
+|---------|-----------|
+| `test/levels.test.mjs` | Fases, desbloqueio, cubos, obstáculos |
+| `test/characters.test.mjs` | Personagens, cores, persistência |
+| `test/room-service.test.mjs` | Códigos de sala, prontidão, ranking |
+| `test/integration.test.mjs` | Fluxo completo solo + multiplayer |

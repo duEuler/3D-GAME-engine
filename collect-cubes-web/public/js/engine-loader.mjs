@@ -1,6 +1,6 @@
 import { withTimeout } from './firebase/with-timeout.mjs';
 
-export const ENGINE_VERSION = '8';
+export const ENGINE_VERSION = '11';
 
 /**
  * @param {{ bootLog: Function, bootError: Function, setBootStep: Function }} debug - Debug API.

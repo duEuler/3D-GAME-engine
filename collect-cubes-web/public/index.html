@@ -190,24 +190,107 @@
     </div>
 
     <div id="app-menu" class="overlay" hidden>
-        <div class="panel">
-            <h1>Collect Cubes</h1>
-            <p id="user-label">Conectando...</p>
-            <p id="online-label" class="muted">0 online</p>
+        <!-- Tela principal -->
+        <div id="screen-main" class="panel panel--wide">
+            <div class="panel-header">
+                <img src="./assets/icons/phase-1.svg" alt="" class="app-logo" width="48" height="48">
+                <div>
+                    <h1>Collect Cubes</h1>
+                    <p id="user-label">Conectando...</p>
+                    <p id="online-label" class="muted">0 online</p>
+                </div>
+            </div>
 
-            <p class="help-hint">Motor 3D só carrega ao tocar <strong>Jogar</strong>. Use <strong>Diagnóstico</strong> se travar.</p>
+            <p class="help-hint">Colete cubos, vença o tempo e desbloqueie todas as 5 fases!</p>
 
-            <div class="actions">
-                <button id="btn-play" class="primary" type="button">Jogar</button>
+            <div class="actions actions--grid">
+                <button id="btn-play" class="primary" type="button">
+                    <img src="./assets/icons/solo.svg" alt="" width="24" height="24"> Jogar Solo
+                </button>
+                <button id="btn-multiplayer" type="button">
+                    <img src="./assets/icons/multiplayer.svg" alt="" width="24" height="24"> Multiplayer
+                </button>
+                <button id="btn-character" type="button">🎨 Personagem</button>
+                <button id="btn-levels" type="button">📋 Fases</button>
+            </div>
+
+            <div class="actions actions--auth">
                 <button id="btn-google" type="button">Entrar com Google</button>
                 <button id="btn-guest" type="button">Jogar como convidado</button>
                 <button id="btn-logout" type="button" hidden>Sair</button>
             </div>
 
             <section class="leaderboard">
-                <h2>Ranking — Fase 1</h2>
+                <h2 id="leaderboard-title">Ranking</h2>
                 <ol id="leaderboard-list"></ol>
             </section>
+        </div>
+
+        <!-- Seleção de modo -->
+        <div id="screen-mode" class="panel" hidden>
+            <button class="btn-back-screen" type="button" data-back="main">← Voltar</button>
+            <h1>Modo de Jogo</h1>
+            <p class="muted">Fase: <strong id="mode-level-name">Fase 1</strong></p>
+            <div class="actions">
+                <button id="btn-mode-solo" class="primary" type="button">
+                    <img src="./assets/icons/solo.svg" alt="" width="24" height="24"> Solo — Jogar agora
+                </button>
+                <button id="btn-mode-create" type="button">Criar sala</button>
+                <button id="btn-mode-join" type="button">Entrar com código</button>
+                <button id="btn-mode-matchmake" type="button">Matchmaking automático</button>
+            </div>
+            <div id="join-room-form" class="form-group" hidden>
+                <label for="room-code-input">Código da sala (6 letras)</label>
+                <input id="room-code-input" type="text" maxlength="6" placeholder="ABC123" autocomplete="off" style="text-transform:uppercase">
+                <button id="btn-join-room" class="primary" type="button">Entrar</button>
+            </div>
+            <p id="matchmaking-status" class="muted" hidden>Buscando oponente...</p>
+        </div>
+
+        <!-- Seleção de personagem -->
+        <div id="screen-character" class="panel panel--wide" hidden>
+            <button class="btn-back-screen" type="button" data-back="main">← Voltar</button>
+            <h1>Seu Personagem</h1>
+            <p class="muted">Escolha forma e cor. Visível no multiplayer.</p>
+            <div id="character-grid" class="card-grid"></div>
+            <h2>Cor</h2>
+            <div id="color-picker" class="color-picker"></div>
+            <div id="character-preview" class="character-preview">
+                <canvas id="character-preview-canvas" width="120" height="120"></canvas>
+                <p id="character-preview-name">Cubo Herói</p>
+            </div>
+            <button id="btn-save-character" class="primary" type="button">Salvar personagem</button>
+        </div>
+
+        <!-- Seleção de fases -->
+        <div id="screen-levels" class="panel panel--wide" hidden>
+            <button class="btn-back-screen" type="button" data-back="main">← Voltar</button>
+            <h1>Escolha a Fase</h1>
+            <p class="muted">Complete fases para desbloquear as próximas.</p>
+            <div id="level-grid" class="card-grid"></div>
+            <button id="btn-play-selected-level" class="primary" type="button">Jogar fase selecionada</button>
+        </div>
+
+        <!-- Lobby multiplayer -->
+        <div id="screen-lobby" class="panel" hidden>
+            <button class="btn-back-screen" type="button" data-back="mode">← Sair da sala</button>
+            <h1>Sala Multiplayer</h1>
+            <p class="lobby-code">Código: <strong id="lobby-code">------</strong></p>
+            <p id="lobby-status" class="muted">Aguardando jogadores...</p>
+            <ul id="lobby-players" class="lobby-players"></ul>
+            <div class="actions">
+                <button id="btn-lobby-ready" type="button">Estou pronto ✅</button>
+                <button id="btn-lobby-start" class="primary" type="button" hidden>Iniciar partida</button>
+            </div>
+        </div>
+
+        <!-- Resultados -->
+        <div id="screen-results" class="panel" hidden>
+            <h1>🏆 Resultados</h1>
+            <ol id="results-list" class="results-list"></ol>
+            <div class="actions">
+                <button id="btn-results-menu" class="primary" type="button">Voltar ao menu</button>
+            </div>
         </div>
     </div>
 
@@ -248,14 +331,14 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=10');
+            const debug = await import('./js/debug-panel.mjs?v=11');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            const bootstrap = await import('./js/bootstrap.mjs?v=10');
+            const bootstrap = await import('./js/bootstrap.mjs?v=11');
             debug.setBootStep('modules', 'loading');
             debug.bootLog('Carregando bootstrap...');
             await bootstrap.initApp(debug);

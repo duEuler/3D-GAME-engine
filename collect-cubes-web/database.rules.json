@@ -25,6 +25,28 @@
           ".write": "auth != null && auth.uid == $uid",
           ".validate": "newData.isNumber()"
         }
+      },
+      "rooms": {
+        "$roomCode": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          "players": {
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid"
+            }
+          },
+          "collectibles": {
+            "$cubeId": {
+              ".write": "auth != null"
+            }
+          }
+        }
+      },
+      "matchmaking": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid == $uid"
+        }
       }
     }
   }

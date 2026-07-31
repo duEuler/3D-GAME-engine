@@ -1,0 +1,14 @@
+{
+  "name": "collect-cubes-web",
+  "version": "2.0.0",
+  "description": "Collect Cubes — jogo arcade 3D com multiplayer Firebase",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/**/*.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage test/**/*.test.mjs",
+    "lint": "node --check public/js/levels.mjs && node --check public/js/characters.mjs && node --check public/js/bootstrap.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
