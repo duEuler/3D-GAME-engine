@@ -1,11 +1,23 @@
 /**
- * Debug panel and boot logging for mobile troubleshooting.
+ * Debug panel, boot shell and loading tracker for mobile troubleshooting.
  */
 
 /** @typedef {{ time: string, level: 'info' | 'error' | 'warn', message: string }} DebugEntry */
+/** @typedef {'pending' | 'loading' | 'ok' | 'error'} BootStepStatus */
 
 /** @type {DebugEntry[]} */
 const entries = [];
+
+/** @type {Record<string, { label: string, status: BootStepStatus }>} */
+const bootSteps = {
+    html: { label: 'Página HTML', status: 'ok' },
+    css: { label: 'Estilos (CSS)', status: 'pending' },
+    modules: { label: 'Módulos JavaScript', status: 'pending' },
+    firebase: { label: 'Firebase', status: 'pending' },
+    auth: { label: 'Autenticação', status: 'pending' },
+    ranking: { label: 'Ranking', status: 'pending' },
+    engine: { label: 'Motor 3D (PlayCanvas)', status: 'pending' }
+};
 
 const panel = document.getElementById('debug-panel');
 const panelBody = document.getElementById('debug-panel-body');
@@ -14,9 +26,57 @@ const toggleButton = document.getElementById('btn-debug');
 const badge = document.getElementById('debug-badge');
 const bootStatus = document.getElementById('boot-status');
 const errorToast = document.getElementById('error-toast');
+const bootShell = document.getElementById('boot-shell');
+const bootShellMessage = document.getElementById('boot-shell-message');
+const bootShellSteps = document.getElementById('boot-shell-steps');
+const bootShellBar = document.getElementById('boot-shell-bar');
 
 let errorCount = 0;
 let panelOpen = false;
+let bootShellVisible = true;
+
+const STEP_ICONS = {
+    pending: '○',
+    loading: '◌',
+    ok: '✓',
+    error: '✗'
+};
+
+/**
+ * @param {string} id - Step id.
+ * @param {BootStepStatus} status - Step status.
+ * @param {string} [detail] - Optional detail text.
+ */
+export function setBootStep(id, status, detail = '') {
+    if (!bootSteps[id]) {
+        bootSteps[id] = { label: id, status };
+    } else {
+        bootSteps[id].status = status;
+    }
+    if (detail) {
+        bootSteps[id].label = detail;
+    }
+    renderBootShell();
+}
+
+/**
+ * @returns {void}
+ */
+export function showBootShell() {
+    bootShellVisible = true;
+    document.body.classList.add('booting');
+    if (bootShell) bootShell.hidden = false;
+    renderBootShell();
+}
+
+/**
+ * @returns {void}
+ */
+export function hideBootShell() {
+    bootShellVisible = false;
+    document.body.classList.remove('booting');
+    if (bootShell) bootShell.hidden = true;
+}
 
 /**
  * @param {string} message - Log message.
@@ -29,18 +89,25 @@ export function bootLog(message, level = 'info') {
         message
     };
     entries.push(entry);
+
+    if (bootShellMessage && bootShellVisible) {
+        bootShellMessage.textContent = message;
+        bootShellMessage.className = level === 'error' ? 'boot-shell__message boot-shell__message--error' : 'boot-shell__message';
+    }
+
     if (level === 'error') {
         errorCount++;
         showErrorToast(message);
         openPanel();
         if (toggleButton) toggleButton.classList.add('debug-fab--alert');
+        if (bootShellVisible) showBootShell();
     }
 
     if (bootStatus) {
-        const suffix = level === 'error' ? ' — toque aqui p/ detalhes' : '';
+        const suffix = level === 'error' ? ' — toque p/ detalhes' : '';
         bootStatus.textContent = message + suffix;
         bootStatus.className = `boot-status boot-status--${level}`;
-        bootStatus.hidden = false;
+        bootStatus.hidden = bootShellVisible;
     }
 
     if (badge) {
@@ -49,6 +116,7 @@ export function bootLog(message, level = 'info') {
     }
 
     renderPanel();
+    renderBootShell();
     console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[CollectCubes] ${message}`);
 }
 
@@ -78,19 +146,41 @@ export function closePanel() {
 
 function showErrorToast(message) {
     if (!errorToast) return;
-    const short = message.length > 120 ? `${message.slice(0, 117)}...` : message;
-    errorToast.textContent = `⚠ ${short} — toque para ver tudo`;
+    const short = message.length > 100 ? `${message.slice(0, 97)}...` : message;
+    errorToast.textContent = `⚠ ${short} — toque p/ ver`;
     errorToast.hidden = false;
+}
+
+function getBootProgress() {
+    const values = Object.values(bootSteps);
+    const done = values.filter((s) => s.status === 'ok').length;
+    return Math.round((done / values.length) * 100);
+}
+
+function renderBootShell() {
+    if (!bootShellSteps) return;
+
+    bootShellSteps.innerHTML = Object.entries(bootSteps).map(([id, step]) => {
+        const icon = STEP_ICONS[step.status];
+        const cls = `boot-shell__step boot-shell__step--${step.status}`;
+        return `<li class="${cls}" data-step="${id}"><span class="boot-shell__icon">${icon}</span> ${step.label}</li>`;
+    }).join('');
+
+    if (bootShellBar) {
+        bootShellBar.style.width = `${Math.max(8, getBootProgress())}%`;
+    }
 }
 
 function getEnvironmentInfo() {
     const canvas = document.createElement('canvas');
     const webgl2 = !!canvas.getContext('webgl2');
-    const webgl = !!canvas.getContext('webgl');
+    const webgl = !!canvas.getContext('webgl') || !!canvas.getContext('experimental-webgl');
+    const importMaps = !!(HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'));
     return [
         `URL: ${location.href}`,
         `Tela: ${window.innerWidth}x${window.innerHeight}`,
         `Pixel ratio: ${window.devicePixelRatio}`,
+        `Import maps: ${importMaps ? 'sim' : 'NÃO — navegador antigo'}`,
         `User-Agent: ${navigator.userAgent}`,
         `WebGL2: ${webgl2 ? 'sim' : 'não'}`,
         `WebGL1: ${webgl ? 'sim' : 'não'}`,
@@ -102,9 +192,16 @@ function getEnvironmentInfo() {
 function renderPanel() {
     if (!panelBody) return;
 
+    const stepLines = Object.entries(bootSteps).map(([id, step]) =>
+        `  ${STEP_ICONS[step.status]} ${id}: ${step.label} [${step.status}]`
+    );
+
     const lines = [
         '=== AMBIENTE ===',
         getEnvironmentInfo(),
+        '',
+        '=== ETAPAS ===',
+        ...stepLines,
         '',
         '=== LOGS ===',
         ...entries.map((entry) => `[${entry.time}] ${entry.level.toUpperCase()}: ${entry.message}`)
@@ -149,32 +246,30 @@ function copyLogs() {
     return Promise.resolve();
 }
 
-toggleButton?.addEventListener('click', () => {
-    setPanelOpen(!panelOpen);
-});
+function wireUi() {
+    toggleButton?.addEventListener('click', () => setPanelOpen(!panelOpen));
+    bootStatus?.addEventListener('click', () => openPanel());
+    errorToast?.addEventListener('click', () => openPanel());
+    document.getElementById('btn-debug-close')?.addEventListener('click', () => closePanel());
+    document.getElementById('boot-shell-debug')?.addEventListener('click', () => openPanel());
+    document.getElementById('boot-shell-continue')?.addEventListener('click', () => {
+        hideBootShell();
+        document.body.classList.add('menu-open');
+        const menu = document.getElementById('app-menu');
+        if (menu) menu.hidden = false;
+    });
 
-bootStatus?.addEventListener('click', () => {
-    openPanel();
-});
-
-errorToast?.addEventListener('click', () => {
-    openPanel();
-});
-
-document.getElementById('btn-debug-close')?.addEventListener('click', () => {
-    closePanel();
-});
-
-document.getElementById('btn-debug-copy')?.addEventListener('click', async () => {
-    const text = panelBody?.textContent || '';
-    try {
-        await copyLogs();
-        bootLog('Logs copiados — cole no WhatsApp ou e-mail');
-    } catch (error) {
-        bootError(error, 'Falha ao copiar');
-        window.prompt('Copie os logs manualmente:', text);
-    }
-});
+    document.getElementById('btn-debug-copy')?.addEventListener('click', async () => {
+        const text = panelBody?.textContent || '';
+        try {
+            await copyLogs();
+            bootLog('Logs copiados — cole no WhatsApp ou e-mail');
+        } catch (error) {
+            bootError(error, 'Falha ao copiar');
+            window.prompt('Copie os logs manualmente:', text);
+        }
+    });
+}
 
 /**
  * @returns {void}
@@ -189,7 +284,29 @@ export function installGlobalErrorHandlers() {
     });
 }
 
-bootLog('Painel de diagnóstico pronto');
-renderPanel();
+/**
+ * @returns {void}
+ */
+export function checkCssLoaded() {
+    const sheet = Array.from(document.styleSheets).find((s) => {
+        try {
+            return s.href && s.href.includes('style.css');
+        } catch {
+            return false;
+        }
+    });
+    if (sheet) {
+        setBootStep('css', 'ok');
+    } else {
+        setBootStep('css', 'error', 'Estilos (CSS) — não carregou');
+        bootLog('CSS não carregou — interface pode estar invisível', 'warn');
+    }
+}
 
-window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, entries };
+wireUi();
+checkCssLoaded();
+setBootStep('modules', 'loading');
+bootLog('Carregando módulos...');
+renderBootShell();
+
+window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, entries };

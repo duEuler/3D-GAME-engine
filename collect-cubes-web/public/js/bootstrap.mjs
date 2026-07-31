@@ -1,4 +1,4 @@
-import { bootError, bootLog } from './debug-panel.mjs';
+import { bootError, bootLog, hideBootShell, setBootStep } from './debug-panel.mjs';
 import {
     ensureSignedIn,
     onUserChanged,
@@ -8,7 +8,6 @@ import {
 } from './firebase/auth-service.mjs';
 import { upsertUserProfile } from './firebase/firestore-service.mjs';
 import { registerPresence, subscribeOnlineCount } from './firebase/realtime-service.mjs';
-import { startGame } from './game.mjs';
 
 const menu = document.getElementById('app-menu');
 const userLabel = document.getElementById('user-label');
@@ -18,6 +17,7 @@ const playButton = document.getElementById('btn-play');
 const googleButton = document.getElementById('btn-google');
 const guestButton = document.getElementById('btn-guest');
 const logoutButton = document.getElementById('btn-logout');
+const continueButton = document.getElementById('boot-shell-continue');
 
 /** @type {(() => void) | null} */
 let stopLiveLeaderboard = null;
@@ -70,6 +70,7 @@ function renderLeaderboard(entries) {
 }
 
 async function refreshLeaderboard() {
+    setBootStep('ranking', 'loading');
     bootLog('Carregando ranking...');
     const { fetchLeaderboard } = await import('./firebase/firestore-service.mjs');
     const { subscribeLiveLeaderboard } = await import('./firebase/realtime-service.mjs');
@@ -78,6 +79,7 @@ async function refreshLeaderboard() {
     const entries = await fetchLeaderboard('default');
     renderLeaderboard(entries);
     stopLiveLeaderboard = subscribeLiveLeaderboard('default', renderLeaderboard);
+    setBootStep('ranking', 'ok');
     bootLog(`Ranking carregado (${entries.length} entradas)`);
 }
 
@@ -88,18 +90,36 @@ async function setupPresence() {
 }
 
 function showMenu() {
+    document.body.classList.add('menu-open');
     if (menu) menu.hidden = false;
 }
 
 function hideMenu() {
+    document.body.classList.remove('menu-open');
     if (menu) menu.hidden = true;
+}
+
+function markAppReady() {
+    setBootStep('modules', 'ok');
+    setBootStep('firebase', 'ok');
+    setBootStep('auth', 'ok');
+    showMenu();
+    if (continueButton) continueButton.hidden = false;
+    bootLog('Pronto — toque em Continuar ou Jogar');
 }
 
 playButton?.addEventListener('click', async () => {
     try {
-        bootLog('Iniciando jogo...');
+        bootLog('Carregando motor 3D (~3,6 MB)...');
+        setBootStep('engine', 'loading');
         await ensureSignedIn();
         hideMenu();
+        hideBootShell();
+
+        const { startGame } = await import('./game.mjs');
+        setBootStep('engine', 'ok');
+        bootLog('Iniciando jogo...');
+
         await startGame({
             levelId: 'default',
             onFinished: () => {
@@ -110,6 +130,7 @@ playButton?.addEventListener('click', async () => {
         });
         bootLog('Jogo iniciado com sucesso');
     } catch (error) {
+        setBootStep('engine', 'error', 'Motor 3D — falhou');
         showMenu();
         showError(error, 'Falha ao iniciar jogo');
     }
@@ -161,17 +182,23 @@ onUserChanged(async (user) => {
 });
 
 try {
-    bootLog('Conectando Firebase Auth...');
+    setBootStep('firebase', 'loading');
+    bootLog('Conectando Firebase...');
     stopOnlineListener = subscribeOnlineCount((count) => {
         if (onlineLabel) onlineLabel.textContent = `${count} online`;
     });
 
+    setBootStep('auth', 'loading');
     await ensureSignedIn();
+    setBootStep('auth', 'ok');
     bootLog('Autenticação OK');
-    showMenu();
+
     await refreshLeaderboard();
-    bootLog('Pronto — toque em Jogar');
+    markAppReady();
 } catch (error) {
+    setBootStep('firebase', 'error', 'Firebase — falhou');
+    setBootStep('auth', 'error', 'Autenticação — falhou');
     showMenu();
+    if (continueButton) continueButton.hidden = false;
     showError(error, 'Inicialização');
 }

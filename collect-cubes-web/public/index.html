@@ -7,78 +7,116 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#121820">
     <title>Collect Cubes</title>
+    <style>
+        /* Crítico: visível mesmo se style.css falhar */
+        html, body { margin: 0; width: 100%; height: 100%; background: #0d1117; color: #e6edf3; font-family: system-ui, sans-serif; }
+        #boot-shell { position: fixed; inset: 0; z-index: 100000; display: flex; flex-direction: column; gap: 14px; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); background: #0d1117; }
+        #boot-shell[hidden] { display: none !important; }
+        #boot-shell h1 { margin: 0; font-size: 1.6rem; }
+        #boot-shell-message { margin: 0; color: #9db0c7; font-size: 0.95rem; line-height: 1.4; }
+        #boot-shell-progress { height: 8px; background: #1f2937; border-radius: 4px; overflow: hidden; }
+        #boot-shell-bar { height: 100%; width: 8%; background: linear-gradient(90deg, #4ea1ff, #7c5cff); transition: width 0.35s; }
+        #boot-shell-steps { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; line-height: 2; flex: 1; overflow: auto; }
+        .boot-shell__step--ok { color: #6ee7a0; }
+        .boot-shell__step--loading { color: #ffd166; }
+        .boot-shell__step--error { color: #ff8a80; font-weight: 700; }
+        .boot-shell__step--pending { color: #6b7c93; }
+        .boot-shell__icon { display: inline-block; width: 1.2em; }
+        .boot-shell__message--error { color: #ff8a80 !important; font-weight: 700; }
+        #boot-shell-actions { display: flex; gap: 10px; margin-top: auto; }
+        #boot-shell-debug, #boot-shell-continue { flex: 1; min-height: 52px; border: 0; border-radius: 12px; font-size: 1rem; font-weight: 700; touch-action: manipulation; }
+        #boot-shell-debug { background: #ff6b35; color: #fff; }
+        #boot-shell-continue { background: #4ea1ff; color: #081018; }
+    </style>
     <link rel="stylesheet" href="./css/style.css">
     <script>
         (function () {
             window.__bootLogs = [];
-            window.__earlyPanelOpen = false;
 
             function formatEarlyLogs() {
-                return window.__bootLogs.map(function (entry) {
-                    return '[' + new Date(entry.time).toLocaleTimeString('pt-BR') + '] ' + entry.message;
+                return window.__bootLogs.map(function (e) {
+                    return '[' + new Date(e.time).toLocaleTimeString('pt-BR') + '] ' + e.message;
                 }).join('\n');
+            }
+
+            function updateEarlyStep(id, status) {
+                var li = document.querySelector('[data-step="' + id + '"]');
+                if (!li) return;
+                li.className = 'boot-shell__step boot-shell__step--' + status;
+                var icons = { pending: '○', loading: '◌', ok: '✓', error: '✗' };
+                var icon = li.querySelector('.boot-shell__icon');
+                if (icon) icon.textContent = icons[status] || '?';
             }
 
             function earlyLog(message, isError) {
                 window.__bootLogs.push({ time: Date.now(), message: message, isError: !!isError });
-                var status = document.getElementById('boot-status');
-                if (status) {
-                    status.textContent = message + (isError ? ' — toque aqui p/ detalhes' : '');
-                    status.className = 'boot-status' + (isError ? ' boot-status--error' : '');
-                    status.hidden = false;
-                }
-                if (isError) {
-                    var toast = document.getElementById('error-toast');
-                    if (toast) {
-                        toast.textContent = '⚠ ' + message + ' — toque para ver tudo';
-                        toast.hidden = false;
-                    }
-                    var fab = document.getElementById('btn-debug');
-                    if (fab) fab.classList.add('debug-fab--alert');
-                    earlyOpenPanel();
+                var msg = document.getElementById('boot-shell-message');
+                if (msg) {
+                    msg.textContent = message;
+                    if (isError) msg.className = 'boot-shell__message--error';
                 }
                 var body = document.getElementById('debug-panel-body');
                 if (body) body.textContent = formatEarlyLogs();
+                if (isError) {
+                    var toast = document.getElementById('error-toast');
+                    if (toast) { toast.textContent = '⚠ ' + message; toast.hidden = false; }
+                    var cont = document.getElementById('boot-shell-continue');
+                    if (cont) cont.hidden = false;
+                    updateEarlyStep('modules', 'error');
+                }
             }
 
             function earlyOpenPanel() {
                 var panel = document.getElementById('debug-panel');
-                var fab = document.getElementById('btn-debug');
-                if (!panel) return;
-                panel.hidden = false;
-                window.__earlyPanelOpen = true;
-                if (fab) fab.setAttribute('aria-expanded', 'true');
+                if (panel) panel.hidden = false;
             }
 
             window.earlyOpenPanel = earlyOpenPanel;
 
-            window.addEventListener('error', function (event) {
-                earlyLog('ERRO: ' + (event.message || 'desconhecido'), true);
+            window.addEventListener('error', function (e) {
+                earlyLog('ERRO: ' + (e.message || 'desconhecido') + (e.filename ? ' em ' + e.filename.split('/').pop() : ''), true);
             });
-            window.addEventListener('unhandledrejection', function (event) {
-                var msg = event.reason && event.reason.message ? event.reason.message : String(event.reason);
-                earlyLog('ERRO: ' + msg, true);
+            window.addEventListener('unhandledrejection', function (e) {
+                var m = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+                earlyLog('ERRO: ' + m, true);
             });
 
             document.addEventListener('DOMContentLoaded', function () {
-                var fab = document.getElementById('btn-debug');
-                var status = document.getElementById('boot-status');
-                var toast = document.getElementById('error-toast');
-                if (fab) fab.addEventListener('click', earlyOpenPanel);
-                if (status) status.addEventListener('click', earlyOpenPanel);
-                if (toast) toast.addEventListener('click', earlyOpenPanel);
+                updateEarlyStep('html', 'ok');
+                document.getElementById('boot-shell-debug')?.addEventListener('click', earlyOpenPanel);
+                document.getElementById('boot-shell-continue')?.addEventListener('click', function () {
+                    document.getElementById('boot-shell').hidden = true;
+                });
             });
 
             earlyLog('Página HTML carregada');
         })();
     </script>
 </head>
-<body>
+<body class="booting menu-open">
+    <div id="boot-shell">
+        <h1>Collect Cubes</h1>
+        <p id="boot-shell-message">Iniciando...</p>
+        <div id="boot-shell-progress"><div id="boot-shell-bar"></div></div>
+        <ul id="boot-shell-steps">
+            <li class="boot-shell__step boot-shell__step--ok" data-step="html"><span class="boot-shell__icon">✓</span> Página HTML</li>
+            <li class="boot-shell__step boot-shell__step--pending" data-step="css"><span class="boot-shell__icon">○</span> Estilos (CSS)</li>
+            <li class="boot-shell__step boot-shell__step--pending" data-step="modules"><span class="boot-shell__icon">○</span> Módulos JavaScript</li>
+            <li class="boot-shell__step boot-shell__step--pending" data-step="firebase"><span class="boot-shell__icon">○</span> Firebase</li>
+            <li class="boot-shell__step boot-shell__step--pending" data-step="auth"><span class="boot-shell__icon">○</span> Autenticação</li>
+            <li class="boot-shell__step boot-shell__step--pending" data-step="ranking"><span class="boot-shell__icon">○</span> Ranking</li>
+            <li class="boot-shell__step boot-shell__step--pending" data-step="engine"><span class="boot-shell__icon">○</span> Motor 3D (ao jogar)</li>
+        </ul>
+        <div id="boot-shell-actions">
+            <button id="boot-shell-debug" type="button">Diagnóstico</button>
+            <button id="boot-shell-continue" type="button" hidden>Continuar</button>
+        </div>
+    </div>
+
     <canvas id="application-canvas"></canvas>
 
-    <button id="error-toast" class="error-toast" type="button" hidden>Erro detectado — toque para ver</button>
-
-    <button id="boot-status" class="boot-status" type="button">Iniciando...</button>
+    <button id="error-toast" class="error-toast" type="button" hidden>Erro — toque p/ ver</button>
+    <button id="boot-status" class="boot-status" type="button" hidden>Status</button>
 
     <button id="btn-debug" class="debug-fab" type="button" aria-expanded="false">
         Diagnóstico
@@ -87,7 +125,7 @@
 
     <div id="debug-panel" class="debug-panel" hidden>
         <div class="debug-panel__header">
-            <strong>Diagnóstico</strong>
+            <strong>Diagnóstico completo</strong>
             <div class="debug-panel__actions">
                 <button id="btn-debug-copy" type="button">Copiar</button>
                 <button id="btn-debug-close" type="button">Fechar</button>
@@ -97,12 +135,11 @@
         <pre id="debug-panel-body" class="debug-panel__body"></pre>
     </div>
 
-    <div id="app-menu" class="overlay">
+    <div id="app-menu" class="overlay" hidden>
         <div class="panel">
             <h1>Collect Cubes</h1>
             <p id="user-label">Conectando...</p>
             <p id="online-label" class="muted">0 online</p>
-            <p class="help-hint">Tela preta? Toque em <strong>Diagnóstico</strong> (laranja, canto inferior).</p>
 
             <div class="actions">
                 <button id="btn-play" class="primary" type="button">Jogar</button>
@@ -128,29 +165,40 @@
         }
     </script>
     <script type="module">
-        try {
-            const { installGlobalErrorHandlers, bootLog } = await import('./js/debug-panel.mjs');
-            installGlobalErrorHandlers();
-            if (window.__bootLogs) {
-                window.__bootLogs.forEach((entry) => bootLog(entry.message, entry.isError ? 'error' : 'info'));
+        const fail = (error) => {
+            const msg = error?.message || String(error);
+            const shellMsg = document.getElementById('boot-shell-message');
+            if (shellMsg) {
+                shellMsg.textContent = 'Falha: ' + msg;
+                shellMsg.className = 'boot-shell__message--error';
             }
-            bootLog('Carregando bootstrap...');
-            await import('./js/bootstrap.mjs');
-            bootLog('Bootstrap carregado');
-        } catch (error) {
-            const msg = error && error.message ? error.message : String(error);
-            const status = document.getElementById('boot-status');
-            if (status) {
-                status.textContent = 'Falha ao iniciar: ' + msg + ' — toque aqui p/ detalhes';
-                status.className = 'boot-status boot-status--error';
-            }
+            const cont = document.getElementById('boot-shell-continue');
+            if (cont) cont.hidden = false;
             const toast = document.getElementById('error-toast');
-            if (toast) {
-                toast.textContent = '⚠ Falha ao iniciar: ' + msg + ' — toque para ver tudo';
-                toast.hidden = false;
-            }
-            if (window.earlyOpenPanel) window.earlyOpenPanel();
+            if (toast) { toast.textContent = '⚠ ' + msg; toast.hidden = false; }
+            window.earlyOpenPanel?.();
             console.error(error);
+        };
+
+        try {
+            if (!HTMLScriptElement.supports?.('importmap')) {
+                throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
+            }
+
+            const { installGlobalErrorHandlers, bootLog, setBootStep } = await import('./js/debug-panel.mjs');
+            installGlobalErrorHandlers();
+
+            if (window.__bootLogs) {
+                window.__bootLogs.forEach((e) => bootLog(e.message, e.isError ? 'error' : 'info'));
+            }
+
+            setBootStep('modules', 'loading');
+            bootLog('Carregando app...');
+            await import('./js/bootstrap.mjs');
+            setBootStep('modules', 'ok');
+            bootLog('App carregado');
+        } catch (error) {
+            fail(error);
         }
     </script>
 </body>
