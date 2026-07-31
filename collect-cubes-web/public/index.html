@@ -11,6 +11,29 @@
 </head>
 <body>
     <canvas id="application-canvas"></canvas>
+
+    <div id="app-menu" class="overlay">
+        <div class="panel">
+            <h1>Collect Cubes</h1>
+            <p id="user-label">Conectando...</p>
+            <p id="online-label" class="muted">0 online</p>
+
+            <div class="actions">
+                <button id="btn-play" class="primary">Jogar</button>
+                <button id="btn-google">Entrar com Google</button>
+                <button id="btn-guest">Jogar como convidado</button>
+                <button id="btn-logout" hidden>Sair</button>
+            </div>
+
+            <section class="leaderboard">
+                <h2>Ranking — Fase 1</h2>
+                <ol id="leaderboard-list"></ol>
+            </section>
+        </div>
+    </div>
+
+    <button id="btn-back-menu" class="back-button" hidden>Menu</button>
+
     <script type="importmap">
         {
             "imports": {
@@ -18,6 +41,6 @@
             }
         }
     </script>
-    <script type="module" src="./js/game.mjs"></script>
+    <script type="module" src="./js/bootstrap.mjs"></script>
 </body>
 </html>

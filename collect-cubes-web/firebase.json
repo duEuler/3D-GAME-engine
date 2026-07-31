@@ -1,4 +1,30 @@
 {
+  "auth": {
+    "providers": {
+      "anonymous": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Collect Cubes",
+        "supportEmail": "eulermagalhaes@gmail.com"
+      }
+    },
+    "authorizedDomains": [
+      "localhost",
+      "dueuler-collect-cubes.web.app",
+      "dueuler-collect-cubes.firebaseapp.com",
+      "dueuler-be03b.web.app",
+      "dueuler-be03b.firebaseapp.com"
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "database": "(default)"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
   "hosting": {
     "site": "dueuler-collect-cubes",
     "public": "public",
