@@ -23,10 +23,12 @@
         .boot-shell__step--pending { color: #6b7c93; }
         .boot-shell__icon { display: inline-block; width: 1.2em; }
         .boot-shell__message--error { color: #ff8a80 !important; font-weight: 700; }
-        #boot-shell-actions { display: flex; gap: 10px; margin-top: auto; }
-        #boot-shell-debug, #boot-shell-continue { flex: 1; min-height: 52px; border: 0; border-radius: 12px; font-size: 1rem; font-weight: 700; touch-action: manipulation; }
+        #boot-shell-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; }
+        #boot-shell-debug, #boot-shell-continue, #boot-shell-copy { flex: 1; min-width: calc(50% - 5px); min-height: 52px; border: 0; border-radius: 12px; font-size: 1rem; font-weight: 700; touch-action: manipulation; }
         #boot-shell-debug { background: #ff6b35; color: #fff; }
         #boot-shell-continue { background: #4ea1ff; color: #081018; }
+        #boot-shell-copy { background: #2a3647; color: #fff; }
+        #boot-shell-copy[hidden] { display: none !important; }
     </style>
     <link rel="stylesheet" href="./css/style.css">
     <script>
@@ -48,6 +50,24 @@
                 if (icon) icon.textContent = icons[status] || '?';
             }
 
+            function earlyCopyText() {
+                var text = formatEarlyLogs();
+                var msg = document.getElementById('boot-shell-message');
+                if (msg) text = (msg.textContent || '') + '\n\n' + text;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    return navigator.clipboard.writeText(text).then(function () {
+                        if (msg) msg.textContent = 'Erro copiado! Cole no WhatsApp.';
+                    });
+                }
+                window.prompt('Copie o erro:', text);
+                return Promise.resolve();
+            }
+
+            function showCopyButton() {
+                var copyBtn = document.getElementById('boot-shell-copy');
+                if (copyBtn) copyBtn.hidden = false;
+            }
+
             function earlyLog(message, isError) {
                 window.__bootLogs.push({ time: Date.now(), message: message, isError: !!isError });
                 var msg = document.getElementById('boot-shell-message');
@@ -62,6 +82,7 @@
                     if (toast) { toast.textContent = '⚠ ' + message; toast.hidden = false; }
                     var cont = document.getElementById('boot-shell-continue');
                     if (cont) cont.hidden = false;
+                    showCopyButton();
                     updateEarlyStep('modules', 'error');
                 }
             }
@@ -72,6 +93,7 @@
             }
 
             window.earlyOpenPanel = earlyOpenPanel;
+            window.earlyCopyText = earlyCopyText;
 
             window.addEventListener('error', function (e) {
                 earlyLog('ERRO: ' + (e.message || 'desconhecido') + (e.filename ? ' em ' + e.filename.split('/').pop() : ''), true);
@@ -84,6 +106,13 @@
             document.addEventListener('DOMContentLoaded', function () {
                 updateEarlyStep('html', 'ok');
                 document.getElementById('boot-shell-debug')?.addEventListener('click', earlyOpenPanel);
+                document.getElementById('boot-shell-copy')?.addEventListener('click', function () {
+                    if (window.collectCubesDebug && window.collectCubesDebug.copyReport) {
+                        window.collectCubesDebug.copyReport();
+                    } else {
+                        earlyCopyText();
+                    }
+                });
                 document.getElementById('boot-shell-continue')?.addEventListener('click', function () {
                     document.getElementById('boot-shell').hidden = true;
                 });
@@ -108,6 +137,7 @@
             <li class="boot-shell__step boot-shell__step--pending" data-step="engine"><span class="boot-shell__icon">○</span> Motor 3D (ao jogar)</li>
         </ul>
         <div id="boot-shell-actions">
+            <button id="boot-shell-copy" type="button" hidden>Copiar erro</button>
             <button id="boot-shell-debug" type="button">Diagnóstico</button>
             <button id="boot-shell-continue" type="button" hidden>Continuar</button>
         </div>
@@ -116,6 +146,7 @@
     <canvas id="application-canvas"></canvas>
 
     <button id="error-toast" class="error-toast" type="button" hidden>Erro — toque p/ ver</button>
+    <button id="btn-copy-error" class="copy-error-btn" type="button" hidden>Copiar erro</button>
     <button id="boot-status" class="boot-status" type="button" hidden>Status</button>
 
     <button id="btn-debug" class="debug-fab" type="button" aria-expanded="false">
@@ -174,8 +205,15 @@
             }
             const cont = document.getElementById('boot-shell-continue');
             if (cont) cont.hidden = false;
+            const copyBtn = document.getElementById('boot-shell-copy');
+            if (copyBtn) copyBtn.hidden = false;
+            const copyErrorBtn = document.getElementById('btn-copy-error');
+            if (copyErrorBtn) copyErrorBtn.hidden = false;
             const toast = document.getElementById('error-toast');
             if (toast) { toast.textContent = '⚠ ' + msg; toast.hidden = false; }
+            if (window.__bootLogs) {
+                window.__bootLogs.push({ time: Date.now(), message: 'Falha: ' + msg, isError: true });
+            }
             window.earlyOpenPanel?.();
             console.error(error);
         };
@@ -185,18 +223,16 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const { installGlobalErrorHandlers, bootLog, setBootStep } = await import('./js/debug-panel.mjs');
-            installGlobalErrorHandlers();
+            const debug = await import('./js/debug-panel.mjs?v=2');
+            debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
-                window.__bootLogs.forEach((e) => bootLog(e.message, e.isError ? 'error' : 'info'));
+                window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            setBootStep('modules', 'loading');
-            bootLog('Carregando app...');
-            await import('./js/bootstrap.mjs');
-            setBootStep('modules', 'ok');
-            bootLog('App carregado');
+            debug.bootLog('Carregando app...');
+            await import('./js/bootstrap.mjs?v=2');
+            debug.bootLog('App carregado');
         } catch (error) {
             fail(error);
         }

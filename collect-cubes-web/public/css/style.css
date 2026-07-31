@@ -140,6 +140,27 @@ button:not(.primary) {
     display: none !important;
 }
 
+.copy-error-btn {
+    position: fixed;
+    top: max(72px, calc(env(safe-area-inset-top) + 60px));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 8100;
+    margin: 0;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 0;
+    background: #2a3647;
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    touch-action: manipulation;
+}
+
+.copy-error-btn[hidden] {
+    display: none !important;
+}
+
 @keyframes error-pulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.02); }

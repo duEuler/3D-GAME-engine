@@ -30,6 +30,8 @@ const bootShell = document.getElementById('boot-shell');
 const bootShellMessage = document.getElementById('boot-shell-message');
 const bootShellSteps = document.getElementById('boot-shell-steps');
 const bootShellBar = document.getElementById('boot-shell-bar');
+const bootShellCopy = document.getElementById('boot-shell-copy');
+const copyErrorBtn = document.getElementById('btn-copy-error');
 
 let errorCount = 0;
 let panelOpen = false;
@@ -98,6 +100,7 @@ export function bootLog(message, level = 'info') {
     if (level === 'error') {
         errorCount++;
         showErrorToast(message);
+        showCopyButtons();
         openPanel();
         if (toggleButton) toggleButton.classList.add('debug-fab--alert');
         if (bootShellVisible) showBootShell();
@@ -229,8 +232,30 @@ function setPanelOpen(open) {
     }
 }
 
-function copyLogs() {
-    const text = panelBody?.textContent || '';
+function showCopyButtons() {
+    if (bootShellCopy) bootShellCopy.hidden = false;
+    if (copyErrorBtn) copyErrorBtn.hidden = false;
+}
+
+function getReportText() {
+    renderPanel();
+    return panelBody?.textContent || entries.map((e) => e.message).join('\n');
+}
+
+/**
+ * @returns {Promise<void>}
+ */
+export async function copyReport() {
+    const text = getReportText();
+    try {
+        await copyText(text);
+        bootLog('Erro copiado — cole no WhatsApp ou e-mail', 'info');
+    } catch (error) {
+        window.prompt('Copie o erro manualmente:', text);
+    }
+}
+
+function copyText(text) {
     if (navigator.clipboard?.writeText) {
         return navigator.clipboard.writeText(text);
     }
@@ -246,12 +271,18 @@ function copyLogs() {
     return Promise.resolve();
 }
 
+function copyLogs() {
+    return copyText(getReportText());
+}
+
 function wireUi() {
     toggleButton?.addEventListener('click', () => setPanelOpen(!panelOpen));
     bootStatus?.addEventListener('click', () => openPanel());
     errorToast?.addEventListener('click', () => openPanel());
+    copyErrorBtn?.addEventListener('click', () => copyReport());
     document.getElementById('btn-debug-close')?.addEventListener('click', () => closePanel());
     document.getElementById('boot-shell-debug')?.addEventListener('click', () => openPanel());
+    bootShellCopy?.addEventListener('click', () => copyReport());
     document.getElementById('boot-shell-continue')?.addEventListener('click', () => {
         hideBootShell();
         document.body.classList.add('menu-open');
@@ -259,16 +290,7 @@ function wireUi() {
         if (menu) menu.hidden = false;
     });
 
-    document.getElementById('btn-debug-copy')?.addEventListener('click', async () => {
-        const text = panelBody?.textContent || '';
-        try {
-            await copyLogs();
-            bootLog('Logs copiados — cole no WhatsApp ou e-mail');
-        } catch (error) {
-            bootError(error, 'Falha ao copiar');
-            window.prompt('Copie os logs manualmente:', text);
-        }
-    });
+    document.getElementById('btn-debug-copy')?.addEventListener('click', () => copyReport());
 }
 
 /**
@@ -309,4 +331,4 @@ setBootStep('modules', 'loading');
 bootLog('Carregando módulos...');
 renderBootShell();
 
-window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, entries };
+window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, entries };
