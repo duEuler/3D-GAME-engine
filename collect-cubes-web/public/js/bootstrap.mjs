@@ -181,6 +181,10 @@ function wireUi() {
 
     googleButton?.addEventListener('click', safeClick(debug, 'Login Google', async () => {
         const result = await authApi.signInWithGoogle();
+        if (!result) {
+            debug.bootLog('Redirecionando para Google...');
+            return;
+        }
         await firestoreApi.upsertUserProfile(result.user);
         await setupPresence();
     }));
@@ -229,6 +233,15 @@ export async function initApp(debugApi) {
 
         await withTimeout(authApi.ensureSignedIn(), 25000, 'Autenticação');
         debug.setBootStep('auth', 'ok');
+
+        try {
+            const redirectResult = await authApi.completeGoogleRedirectIfNeeded();
+            if (redirectResult?.user) {
+                debug.bootLog(`Login Google OK (${redirectResult.user.email || 'conta'})`);
+            }
+        } catch (error) {
+            showError(error, 'Retorno Google');
+        }
 
         authApi.onUserChanged(async (user) => {
             renderUser(user);

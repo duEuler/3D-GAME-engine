@@ -13,6 +13,9 @@ const listeners = [];
 /** @type {Promise<import('firebase/auth').Auth> | null} */
 let authInitPromise = null;
 
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 0 && window.innerWidth < 900);
+
 /**
  * @returns {Promise<import('firebase/auth').Auth>}
  */
@@ -21,7 +24,7 @@ async function getAuthClient() {
 
     if (!authInitPromise) {
         authInitPromise = (async () => {
-            const { getAuth, onAuthStateChanged, GoogleAuthProvider } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
+            const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
             auth = getAuth(await getApp());
             onAuthStateChanged(auth, (user) => {
                 currentUser = user;
@@ -61,11 +64,42 @@ export function onUserChanged(callback) {
 }
 
 /**
- * @returns {Promise<import('firebase/auth').UserCredential>} Google sign-in result.
+ * Completes Google redirect sign-in when returning to the app.
+ * @returns {Promise<import('firebase/auth').UserCredential | null>}
+ */
+export async function completeGoogleRedirectIfNeeded() {
+    const { getRedirectResult } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
+    return getRedirectResult(await getAuthClient());
+}
+
+/**
+ * @returns {Promise<import('firebase/auth').UserCredential | void>} Google sign-in result.
  */
 export async function signInWithGoogle() {
-    const { signInWithPopup } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
-    return signInWithPopup(await getAuthClient(), await getGoogleProvider());
+    const authClient = await getAuthClient();
+    const provider = await getGoogleProvider();
+    const { signInWithPopup, signInWithRedirect } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
+
+    try {
+        if (IS_MOBILE) {
+            await signInWithRedirect(authClient, provider);
+            return;
+        }
+        return await signInWithPopup(authClient, provider);
+    } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+        if (code === 'auth/unauthorized-domain') {
+            throw new Error(
+                `Domínio não autorizado no Firebase (${location.hostname}). ` +
+                'Use "Jogar como convidado" ou peça para autorizar o domínio no console Firebase.'
+            );
+        }
+        if (code === 'auth/popup-blocked' || code === 'auth/popup-closed-by-user') {
+            await signInWithRedirect(authClient, provider);
+            return;
+        }
+        throw error;
+    }
 }
 
 /**
