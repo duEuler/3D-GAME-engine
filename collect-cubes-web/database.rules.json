@@ -27,12 +27,13 @@
         }
       },
       "rooms": {
+        ".read": "auth != null",
         "$roomCode": {
           ".read": "auth != null",
-          ".write": "auth != null",
+          ".write": "auth != null && (!data.exists() && newData.child('hostUid').val() == auth.uid || data.child('hostUid').val() == auth.uid)",
           "players": {
             "$uid": {
-              ".write": "auth != null && auth.uid == $uid"
+              ".write": "auth != null && (auth.uid == $uid || root.child('collectCubes/rooms').child($roomCode).child('hostUid').val() == auth.uid)"
             }
           },
           "collectibles": {

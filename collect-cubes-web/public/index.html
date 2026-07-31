@@ -292,6 +292,7 @@
             <h1>Sala Multiplayer</h1>
             <p class="lobby-code">Código: <strong id="lobby-code">------</strong></p>
             <p id="lobby-status" class="muted">Aguardando jogadores...</p>
+            <p id="lobby-error" class="lobby-error" hidden></p>
             <ul id="lobby-players" class="lobby-players"></ul>
             <div class="actions">
                 <button id="btn-lobby-ready" type="button">Estou pronto ✅</button>
@@ -346,14 +347,14 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=12');
+            const debug = await import('./js/debug-panel.mjs?v=13');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            const bootstrap = await import('./js/bootstrap.mjs?v=12');
+            const bootstrap = await import('./js/bootstrap.mjs?v=13');
             debug.setBootStep('modules', 'loading');
             debug.bootLog('Carregando bootstrap...');
             await bootstrap.initApp(debug);

@@ -1,7 +1,20 @@
-import { getCurrentUser } from '../firebase/auth-service.mjs';
+import { getApp } from '../firebase/core.mjs';
 
 /** @type {import('firebase/database').Database | null} */
 let rtdb = null;
+
+/**
+ * @returns {Promise<import('firebase/auth').User>}
+ */
+async function requireUser() {
+    const { getAuth } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js');
+    const auth = getAuth(await getApp());
+    if (auth.currentUser) {
+        return auth.currentUser;
+    }
+    const { ensureSignedIn } = await import('../firebase/auth-service.mjs');
+    return ensureSignedIn();
+}
 
 /**
  * @returns {Promise<import('firebase/database').Database>}
@@ -53,47 +66,74 @@ export function generateRoomCode() {
 
 /**
  * @param {string} code - Room code.
- * @param {string} levelId - Level id.
- * @param {object} playerInfo - Player info.
- * @param {string} playerInfo.displayName
- * @param {string} playerInfo.characterId
- * @param {string} playerInfo.colorHex
+ * @returns {Promise<(RoomState & {code: string}) | null>}
+ */
+export async function getRoom(code) {
+    const user = await requireUser();
+    if (!user) return null;
+
+    const { ref, get } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+    const database = await getRtdb();
+    const snap = await get(ref(database, `collectCubes/rooms/${code}`));
+    if (!snap.exists()) return null;
+    return { code, ...snap.val() };
+}
+
+/**
+ * Cria sala com retry automático de código e verificação pós-escrita.
+ * @param {string} levelId
+ * @param {object} playerInfo
  * @returns {Promise<string>} Room code.
  */
-export async function createRoom(code, levelId, playerInfo) {
-    const user = getCurrentUser();
-    if (!user) throw new Error('Faça login para criar sala');
+export async function createRoomForLevel(levelId, playerInfo) {
+    const user = await requireUser();
+    await leaveMatchmaking();
 
     const { ref, set, get } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
     const database = await getRtdb();
-    const roomRef = ref(database, `collectCubes/rooms/${code}`);
 
-    const existing = await get(roomRef);
-    if (existing.exists()) {
-        throw new Error('Código já em uso. Tente outro.');
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const code = generateRoomCode();
+        const roomRef = ref(database, `collectCubes/rooms/${code}`);
+        const existing = await get(roomRef);
+        if (existing.exists()) continue;
+
+        try {
+            await set(roomRef, {
+                hostUid: user.uid,
+                levelId,
+                status: 'waiting',
+                maxPlayers: 8,
+                createdAt: Date.now(),
+                players: {
+                    [user.uid]: {
+                        displayName: playerInfo.displayName,
+                        characterId: playerInfo.characterId,
+                        colorHex: playerInfo.colorHex,
+                        ready: true,
+                        score: 0,
+                        x: 0,
+                        y: 0.5,
+                        z: 0
+                    }
+                }
+            });
+
+            const verify = await get(roomRef);
+            if (!verify.exists()) {
+                throw new Error('Sala criada mas não encontrada. Verifique sua conexão.');
+            }
+            return code;
+        } catch (error) {
+            const fbCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+            if (fbCode === 'PERMISSION_DENIED') {
+                throw new Error('Sem permissão no Firebase. Saia e entre novamente (Google ou convidado).');
+            }
+            if (attempt === 7) throw error;
+        }
     }
 
-    await set(roomRef, {
-        hostUid: user.uid,
-        levelId,
-        status: 'waiting',
-        maxPlayers: 8,
-        createdAt: Date.now(),
-        players: {
-            [user.uid]: {
-                displayName: playerInfo.displayName,
-                characterId: playerInfo.characterId,
-                colorHex: playerInfo.colorHex,
-                ready: true,
-                score: 0,
-                x: 0,
-                y: 0.5,
-                z: 0
-            }
-        }
-    });
-
-    return code;
+    throw new Error('Não foi possível criar sala. Tente novamente.');
 }
 
 /**
@@ -105,8 +145,7 @@ export async function createRoom(code, levelId, playerInfo) {
  * @returns {Promise<void>}
  */
 export async function joinRoom(code, playerInfo) {
-    const user = getCurrentUser();
-    if (!user) throw new Error('Faça login para entrar na sala');
+    const user = await requireUser();
 
     const { ref, get, update, runTransaction } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
     const database = await getRtdb();
@@ -137,7 +176,7 @@ export async function joinRoom(code, playerInfo) {
  * @returns {Promise<void>}
  */
 export async function leaveRoom(code) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return;
 
     const { ref, get, remove, update } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -163,7 +202,7 @@ export async function leaveRoom(code) {
  * @returns {Promise<void>}
  */
 export async function setPlayerReady(code, ready) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return;
 
     const { ref, update } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -178,8 +217,7 @@ export async function setPlayerReady(code, ready) {
  * @returns {Promise<void>}
  */
 export async function startRoomGame(code, seed, collectibles) {
-    const user = getCurrentUser();
-    if (!user) throw new Error('Não autenticado');
+    const user = await requireUser();
 
     const { ref, get, update } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
     const database = await getRtdb();
@@ -214,7 +252,7 @@ export async function startRoomGame(code, seed, collectibles) {
  * @returns {Promise<void>}
  */
 export async function updatePlayerPosition(code, x, y, z) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return;
 
     const { ref, update } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -228,7 +266,7 @@ export async function updatePlayerPosition(code, x, y, z) {
  * @returns {Promise<void>}
  */
 export async function updatePlayerScore(code, score) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return;
 
     const { ref, update } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -242,7 +280,7 @@ export async function updatePlayerScore(code, score) {
  * @returns {Promise<boolean>} True if collected successfully.
  */
 export async function collectCubeInRoom(code, collectibleId) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return false;
 
     const { ref, runTransaction } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -262,7 +300,7 @@ export async function collectCubeInRoom(code, collectibleId) {
  * @returns {Promise<void>}
  */
 export async function finishRoomGame(code) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return;
 
     const { ref, get, update } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -279,25 +317,43 @@ export async function finishRoomGame(code) {
 
 /**
  * @param {string} code - Room code.
- * @param {(room: RoomState & {code: string}) => void} callback
+ * @param {(room: (RoomState & {code: string}) | null, error?: Error) => void} callback
  * @returns {() => void}
  */
 export function subscribeRoom(code, callback) {
+    let cancelled = false;
     let unsubscribe = () => {};
 
     getRtdb().then(async (database) => {
+        if (cancelled) return;
         const { onValue, ref } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
         const roomRef = ref(database, `collectCubes/rooms/${code}`);
-        unsubscribe = onValue(roomRef, (snapshot) => {
-            if (!snapshot.exists()) {
-                callback(null);
-                return;
+        unsubscribe = onValue(
+            roomRef,
+            (snapshot) => {
+                if (cancelled) return;
+                if (!snapshot.exists()) {
+                    callback(null);
+                    return;
+                }
+                callback({ code, ...snapshot.val() });
+            },
+            (error) => {
+                if (cancelled) return;
+                const err = error instanceof Error ? error : new Error(String(error));
+                callback(null, err);
             }
-            callback({ code, ...snapshot.val() });
-        });
+        );
+    }).catch((error) => {
+        if (!cancelled) {
+            callback(null, error instanceof Error ? error : new Error(String(error)));
+        }
     });
 
-    return () => unsubscribe();
+    return () => {
+        cancelled = true;
+        unsubscribe();
+    };
 }
 
 /**
@@ -307,8 +363,7 @@ export function subscribeRoom(code, callback) {
  * @returns {Promise<void>}
  */
 export async function joinMatchmaking(levelId, playerInfo) {
-    const user = getCurrentUser();
-    if (!user) throw new Error('Faça login para matchmaking');
+    const user = await requireUser();
 
     const { ref, set, get, remove } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
     const database = await getRtdb();
@@ -326,7 +381,7 @@ export async function joinMatchmaking(levelId, playerInfo) {
  * @returns {Promise<void>}
  */
 export async function leaveMatchmaking() {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return;
 
     const { ref, remove } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -340,7 +395,7 @@ export async function leaveMatchmaking() {
  * @returns {Promise<string|null>} Room code if matched.
  */
 export async function tryMatchmake(levelId) {
-    const user = getCurrentUser();
+    const user = await requireUser().catch(() => null);
     if (!user) return null;
 
     const { ref, get, remove, set } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
@@ -402,35 +457,39 @@ export async function tryMatchmake(levelId) {
  * @returns {() => void}
  */
 export function subscribeMatchmakingResult(onMatched) {
-    const user = getCurrentUser();
-    if (!user) return () => {};
-
+    let user = null;
     let unsubscribe = () => {};
-    let roomUnsub = () => {};
+    let cancelled = false;
 
-    getRtdb().then(async (database) => {
-        const { onValue, ref, get } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
-        const queueRef = ref(database, `collectCubes/matchmaking/${user.uid}`);
+    requireUser().then((u) => {
+        if (cancelled || !u) return;
+        user = u;
 
-        unsubscribe = onValue(queueRef, async (snapshot) => {
-            if (snapshot.exists()) return;
+        getRtdb().then(async (database) => {
+            if (cancelled) return;
+            const { onValue, ref, get } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+            const queueRef = ref(database, `collectCubes/matchmaking/${user.uid}`);
 
-            const roomsSnap = await get(ref(database, 'collectCubes/rooms'));
-            if (!roomsSnap.exists()) return;
+            unsubscribe = onValue(queueRef, async (snapshot) => {
+                if (cancelled || snapshot.exists()) return;
 
-            const rooms = roomsSnap.val();
-            for (const [code, room] of Object.entries(rooms)) {
-                if (room.players?.[user.uid] && room.matchmade) {
-                    onMatched(code);
-                    return;
+                const roomsSnap = await get(ref(database, `collectCubes/rooms`)).catch(() => null);
+                if (!roomsSnap?.exists()) return;
+
+                const rooms = roomsSnap.val();
+                for (const [code, room] of Object.entries(rooms)) {
+                    if (room.players?.[user.uid] && room.matchmade) {
+                        onMatched(code);
+                        return;
+                    }
                 }
-            }
+            });
         });
-    });
+    }).catch(() => {});
 
     return () => {
+        cancelled = true;
         unsubscribe();
-        roomUnsub();
     };
 }
 

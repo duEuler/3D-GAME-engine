@@ -6,7 +6,7 @@ import {
     renderColorPicker, renderLobbyPlayers, renderResultsList
 } from './ui/menu-controller.mjs';
 
-const AUTH_VERSION = '12';
+const AUTH_VERSION = '13';
 
 /** @type {typeof import('./debug-panel.mjs') | null} */
 let debug = null;
@@ -318,17 +318,41 @@ function updateModeScreen() {
     if (nameEl && level) nameEl.textContent = level.name;
 }
 
+function setLobbyError(message) {
+    const el = document.getElementById('lobby-error');
+    if (el) {
+        el.textContent = message;
+        el.hidden = !message;
+    }
+}
+
+function clearLobbyError() {
+    setLobbyError('');
+}
+
 function setupLobbyListener(code) {
     stopRoomListener?.();
     const user = authApi?.getCurrentUser();
     if (!user || !roomApi) return;
 
-    stopRoomListener = roomApi.subscribeRoom(code, (room) => {
-        if (!room) {
-            showError(new Error('Sala encerrada'), 'Lobby');
-            showScreen('main');
+    let hadRoom = false;
+
+    stopRoomListener = roomApi.subscribeRoom(code, (room, error) => {
+        if (error) {
+            setLobbyError(`Erro de conexão: ${error.message}`);
+            debug?.bootLog(`Lobby RTDB: ${error.message}`, 'error');
             return;
         }
+
+        if (!room) {
+            if (hadRoom) {
+                setLobbyError('A sala foi encerrada.');
+            }
+            return;
+        }
+
+        hadRoom = true;
+        clearLobbyError();
         renderLobbyPlayers(room, user.uid);
 
         const startBtn = document.getElementById('btn-lobby-start');
@@ -417,13 +441,24 @@ async function createRoom() {
     const user = await ensureAuthForOnline();
     if (!user) return;
 
-    let code = roomApi.generateRoomCode();
+    stopRoomListener?.();
+    stopMatchmakingListener?.();
+    if (matchmakingInterval) {
+        clearInterval(matchmakingInterval);
+        matchmakingInterval = null;
+    }
+
+    debug?.bootLog('Criando sala...');
     const info = getPlayerInfo();
-    await roomApi.createRoom(code, appState.selectedLevelId, info);
+    const code = await roomApi.createRoomForLevel(appState.selectedLevelId, info);
+
     appState.roomCode = code;
     isReady = true;
+    clearLobbyError();
     showScreen('lobby');
+    renderLobbyPlayers(await roomApi.getRoom(code), user.uid);
     setupLobbyListener(code);
+    debug?.bootLog(`Sala criada: ${code}`);
 }
 
 async function joinRoomByCode(code) {
@@ -431,11 +466,14 @@ async function joinRoomByCode(code) {
     const user = await ensureAuthForOnline();
     if (!user) return;
 
+    stopRoomListener?.();
     const info = getPlayerInfo();
     await roomApi.joinRoom(code.toUpperCase(), info);
     appState.roomCode = code.toUpperCase();
     isReady = false;
+    clearLobbyError();
     showScreen('lobby');
+    renderLobbyPlayers(await roomApi.getRoom(appState.roomCode), user.uid);
     setupLobbyListener(appState.roomCode);
 }
 
