@@ -1,5 +1,6 @@
 import * as pc from 'playcanvas';
 
+import { bootError, bootLog } from './debug-panel.mjs';
 import { getCurrentUser } from './firebase/auth-service.mjs';
 import { publishLiveScore } from './firebase/realtime-service.mjs';
 import { saveRunResult } from './firebase/firestore-service.mjs';
@@ -46,7 +47,15 @@ export async function startGame(options) {
         font: new pc.Asset('font', 'font', { url: './assets/fonts/courier.json' })
     };
 
-    const device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl2'] });
+    bootLog('Criando dispositivo gráfico...');
+    let device;
+    try {
+        device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl2', 'webgpu'] });
+    } catch (firstError) {
+        bootError(firstError, 'WebGL2/WebGPU falhou, tentando WebGL1');
+        device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgl1'] });
+    }
+    bootLog(`GPU: ${device.isWebGL2 ? 'WebGL2' : device.isWebGPU ? 'WebGPU' : 'WebGL'}`);
     device.maxPixelRatio = Math.min(window.devicePixelRatio, 2);
 
     const createOptions = new pc.AppOptions();
@@ -275,9 +284,13 @@ export async function startGame(options) {
         if (backButton) backButton.hidden = true;
     };
 
-    await new Promise((resolve) => {
-        new pc.AssetListLoader(Object.values(assets), app.assets).load(resolve);
+    await new Promise((resolve, reject) => {
+        new pc.AssetListLoader(Object.values(assets), app.assets).load((err) => {
+            if (err) reject(err);
+            else resolve();
+        });
     });
+    bootLog('Assets carregados');
 
     app.start();
     app.scene.ambientLight = new pc.Color(0.35, 0.35, 0.4);

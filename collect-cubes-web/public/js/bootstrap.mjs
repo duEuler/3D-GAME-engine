@@ -1,3 +1,4 @@
+import { bootError, bootLog } from './debug-panel.mjs';
 import {
     ensureSignedIn,
     onUserChanged,
@@ -17,7 +18,6 @@ const playButton = document.getElementById('btn-play');
 const googleButton = document.getElementById('btn-google');
 const guestButton = document.getElementById('btn-guest');
 const logoutButton = document.getElementById('btn-logout');
-const errorBanner = document.getElementById('app-error');
 
 /** @type {(() => void) | null} */
 let stopLiveLeaderboard = null;
@@ -28,13 +28,10 @@ let stopPresence = null;
 
 /**
  * @param {unknown} error - Caught error.
+ * @param {string} [context] - Error context.
  */
-function showError(error) {
-    if (!errorBanner) return;
-    const message = error instanceof Error ? error.message : String(error);
-    errorBanner.textContent = `Erro: ${message}`;
-    errorBanner.hidden = false;
-    console.error(error);
+function showError(error, context = '') {
+    bootError(error, context);
 }
 
 /**
@@ -73,6 +70,7 @@ function renderLeaderboard(entries) {
 }
 
 async function refreshLeaderboard() {
+    bootLog('Carregando ranking...');
     const { fetchLeaderboard } = await import('./firebase/firestore-service.mjs');
     const { subscribeLiveLeaderboard } = await import('./firebase/realtime-service.mjs');
 
@@ -80,11 +78,13 @@ async function refreshLeaderboard() {
     const entries = await fetchLeaderboard('default');
     renderLeaderboard(entries);
     stopLiveLeaderboard = subscribeLiveLeaderboard('default', renderLeaderboard);
+    bootLog(`Ranking carregado (${entries.length} entradas)`);
 }
 
 async function setupPresence() {
     stopPresence?.();
     stopPresence = await registerPresence();
+    bootLog('Presença online registrada');
 }
 
 function showMenu() {
@@ -97,46 +97,54 @@ function hideMenu() {
 
 playButton?.addEventListener('click', async () => {
     try {
+        bootLog('Iniciando jogo...');
         await ensureSignedIn();
         hideMenu();
         await startGame({
             levelId: 'default',
             onFinished: () => {
+                bootLog('Voltando ao menu');
                 showMenu();
-                refreshLeaderboard().catch(showError);
+                refreshLeaderboard().catch((error) => showError(error, 'Ranking'));
             }
         });
+        bootLog('Jogo iniciado com sucesso');
     } catch (error) {
         showMenu();
-        showError(error);
+        showError(error, 'Falha ao iniciar jogo');
     }
 });
 
 googleButton?.addEventListener('click', async () => {
     try {
+        bootLog('Login Google...');
         const result = await signInWithGoogle();
         await upsertUserProfile(result.user);
         await setupPresence();
+        bootLog('Login Google OK');
     } catch (error) {
-        showError(error);
+        showError(error, 'Login Google');
     }
 });
 
 guestButton?.addEventListener('click', async () => {
     try {
+        bootLog('Login convidado...');
         const result = await signInAsGuest();
         await upsertUserProfile(result.user);
         await setupPresence();
+        bootLog('Login convidado OK');
     } catch (error) {
-        showError(error);
+        showError(error, 'Login convidado');
     }
 });
 
 logoutButton?.addEventListener('click', async () => {
     try {
         await signOutUser();
+        bootLog('Logout OK');
     } catch (error) {
-        showError(error);
+        showError(error, 'Logout');
     }
 });
 
@@ -147,20 +155,23 @@ onUserChanged(async (user) => {
             await upsertUserProfile(user);
             await setupPresence();
         } catch (error) {
-            showError(error);
+            showError(error, 'Perfil/presença');
         }
     }
 });
 
 try {
+    bootLog('Conectando Firebase Auth...');
     stopOnlineListener = subscribeOnlineCount((count) => {
         if (onlineLabel) onlineLabel.textContent = `${count} online`;
     });
 
     await ensureSignedIn();
+    bootLog('Autenticação OK');
     showMenu();
     await refreshLeaderboard();
+    bootLog('Pronto — toque em Jogar');
 } catch (error) {
     showMenu();
-    showError(error);
+    showError(error, 'Inicialização');
 }

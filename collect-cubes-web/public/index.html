@@ -8,23 +8,107 @@
     <meta name="theme-color" content="#121820">
     <title>Collect Cubes</title>
     <link rel="stylesheet" href="./css/style.css">
+    <script>
+        (function () {
+            window.__bootLogs = [];
+            window.__earlyPanelOpen = false;
+
+            function formatEarlyLogs() {
+                return window.__bootLogs.map(function (entry) {
+                    return '[' + new Date(entry.time).toLocaleTimeString('pt-BR') + '] ' + entry.message;
+                }).join('\n');
+            }
+
+            function earlyLog(message, isError) {
+                window.__bootLogs.push({ time: Date.now(), message: message, isError: !!isError });
+                var status = document.getElementById('boot-status');
+                if (status) {
+                    status.textContent = message + (isError ? ' — toque aqui p/ detalhes' : '');
+                    status.className = 'boot-status' + (isError ? ' boot-status--error' : '');
+                    status.hidden = false;
+                }
+                if (isError) {
+                    var toast = document.getElementById('error-toast');
+                    if (toast) {
+                        toast.textContent = '⚠ ' + message + ' — toque para ver tudo';
+                        toast.hidden = false;
+                    }
+                    var fab = document.getElementById('btn-debug');
+                    if (fab) fab.classList.add('debug-fab--alert');
+                    earlyOpenPanel();
+                }
+                var body = document.getElementById('debug-panel-body');
+                if (body) body.textContent = formatEarlyLogs();
+            }
+
+            function earlyOpenPanel() {
+                var panel = document.getElementById('debug-panel');
+                var fab = document.getElementById('btn-debug');
+                if (!panel) return;
+                panel.hidden = false;
+                window.__earlyPanelOpen = true;
+                if (fab) fab.setAttribute('aria-expanded', 'true');
+            }
+
+            window.earlyOpenPanel = earlyOpenPanel;
+
+            window.addEventListener('error', function (event) {
+                earlyLog('ERRO: ' + (event.message || 'desconhecido'), true);
+            });
+            window.addEventListener('unhandledrejection', function (event) {
+                var msg = event.reason && event.reason.message ? event.reason.message : String(event.reason);
+                earlyLog('ERRO: ' + msg, true);
+            });
+
+            document.addEventListener('DOMContentLoaded', function () {
+                var fab = document.getElementById('btn-debug');
+                var status = document.getElementById('boot-status');
+                var toast = document.getElementById('error-toast');
+                if (fab) fab.addEventListener('click', earlyOpenPanel);
+                if (status) status.addEventListener('click', earlyOpenPanel);
+                if (toast) toast.addEventListener('click', earlyOpenPanel);
+            });
+
+            earlyLog('Página HTML carregada');
+        })();
+    </script>
 </head>
 <body>
     <canvas id="application-canvas"></canvas>
 
-    <div id="app-error" class="error-banner" hidden></div>
+    <button id="error-toast" class="error-toast" type="button" hidden>Erro detectado — toque para ver</button>
+
+    <button id="boot-status" class="boot-status" type="button">Iniciando...</button>
+
+    <button id="btn-debug" class="debug-fab" type="button" aria-expanded="false">
+        Diagnóstico
+        <span id="debug-badge" class="debug-badge" hidden>0</span>
+    </button>
+
+    <div id="debug-panel" class="debug-panel" hidden>
+        <div class="debug-panel__header">
+            <strong>Diagnóstico</strong>
+            <div class="debug-panel__actions">
+                <button id="btn-debug-copy" type="button">Copiar</button>
+                <button id="btn-debug-close" type="button">Fechar</button>
+            </div>
+        </div>
+        <p id="debug-panel-status" class="debug-panel__status">Carregando...</p>
+        <pre id="debug-panel-body" class="debug-panel__body"></pre>
+    </div>
 
     <div id="app-menu" class="overlay">
         <div class="panel">
             <h1>Collect Cubes</h1>
             <p id="user-label">Conectando...</p>
             <p id="online-label" class="muted">0 online</p>
+            <p class="help-hint">Tela preta? Toque em <strong>Diagnóstico</strong> (laranja, canto inferior).</p>
 
             <div class="actions">
-                <button id="btn-play" class="primary">Jogar</button>
-                <button id="btn-google">Entrar com Google</button>
-                <button id="btn-guest">Jogar como convidado</button>
-                <button id="btn-logout" hidden>Sair</button>
+                <button id="btn-play" class="primary" type="button">Jogar</button>
+                <button id="btn-google" type="button">Entrar com Google</button>
+                <button id="btn-guest" type="button">Jogar como convidado</button>
+                <button id="btn-logout" type="button" hidden>Sair</button>
             </div>
 
             <section class="leaderboard">
@@ -34,7 +118,7 @@
         </div>
     </div>
 
-    <button id="btn-back-menu" class="back-button" hidden>Menu</button>
+    <button id="btn-back-menu" class="back-button" type="button" hidden>Menu</button>
 
     <script type="importmap">
         {
@@ -43,6 +127,31 @@
             }
         }
     </script>
-    <script type="module" src="./js/bootstrap.mjs"></script>
+    <script type="module">
+        try {
+            const { installGlobalErrorHandlers, bootLog } = await import('./js/debug-panel.mjs');
+            installGlobalErrorHandlers();
+            if (window.__bootLogs) {
+                window.__bootLogs.forEach((entry) => bootLog(entry.message, entry.isError ? 'error' : 'info'));
+            }
+            bootLog('Carregando bootstrap...');
+            await import('./js/bootstrap.mjs');
+            bootLog('Bootstrap carregado');
+        } catch (error) {
+            const msg = error && error.message ? error.message : String(error);
+            const status = document.getElementById('boot-status');
+            if (status) {
+                status.textContent = 'Falha ao iniciar: ' + msg + ' — toque aqui p/ detalhes';
+                status.className = 'boot-status boot-status--error';
+            }
+            const toast = document.getElementById('error-toast');
+            if (toast) {
+                toast.textContent = '⚠ Falha ao iniciar: ' + msg + ' — toque para ver tudo';
+                toast.hidden = false;
+            }
+            if (window.earlyOpenPanel) window.earlyOpenPanel();
+            console.error(error);
+        }
+    </script>
 </body>
 </html>
