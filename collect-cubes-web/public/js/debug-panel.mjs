@@ -101,9 +101,7 @@ export function bootLog(message, level = 'info') {
         errorCount++;
         showErrorToast(message);
         showCopyButtons();
-        openPanel();
         if (toggleButton) toggleButton.classList.add('debug-fab--alert');
-        if (bootShellVisible) showBootShell();
     }
 
     if (bootStatus) {
@@ -310,7 +308,6 @@ export function showErrorDialog(error, context = '') {
     body.textContent = text;
     dialog.hidden = false;
     showCopyButtons();
-    openPanel();
 }
 
 function hideErrorDialog() {

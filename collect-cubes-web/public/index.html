@@ -248,14 +248,14 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=6');
+            const debug = await import('./js/debug-panel.mjs?v=7');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            const bootstrap = await import('./js/bootstrap.mjs?v=6');
+            const bootstrap = await import('./js/bootstrap.mjs?v=7');
             debug.setBootStep('modules', 'loading');
             debug.bootLog('Carregando bootstrap...');
             await bootstrap.initApp(debug);

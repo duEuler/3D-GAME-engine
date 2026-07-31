@@ -24,6 +24,8 @@ let realtimeApi = null;
 let stopLiveLeaderboard = null;
 /** @type {(() => void) | null} */
 let stopOnlineListener = null;
+/** @type {typeof import('./safe-action.mjs') | null} */
+let safeAction = null;
 /** @type {(() => void) | null} */
 let stopPresence = null;
 
@@ -33,7 +35,6 @@ let stopPresence = null;
  */
 function showError(error, context = '') {
     debug?.bootError(error, context);
-    debug?.showErrorDialog(error, context);
 }
 
 /**
@@ -129,7 +130,8 @@ function markAppReady() {
 }
 
 function wireUi() {
-    const { safeClick } = debug._safe;
+    if (!safeAction || !debug) return;
+    const { safeClick } = safeAction;
 
     continueButton?.addEventListener('click', safeClick(debug, 'Continuar', async () => {
         debug.continueToMenu();
@@ -183,8 +185,7 @@ function wireUi() {
 export async function initApp(debugApi) {
     debug = debugApi;
 
-    const safeModule = await import('./safe-action.mjs');
-    debug._safe = safeModule;
+    safeAction = await import('./safe-action.mjs');
 
     try {
         wireUi();
@@ -229,7 +230,8 @@ export async function initApp(debugApi) {
         debug.setBootStep('firebase', 'error', 'Firebase — falhou');
         debug.setBootStep('auth', 'error', 'Autenticação — falhou');
         if (continueButton) continueButton.hidden = false;
-        showError(error, 'Inicialização');
+        debug.bootError(error, 'Inicialização');
+        debug.showErrorDialog(error, 'Inicialização');
     }
 }
 
