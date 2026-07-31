@@ -1,5 +1,7 @@
-import { bootError, bootLog, hideBootShell, setBootStep } from './debug-panel.mjs';
 import { withTimeout } from './firebase/with-timeout.mjs';
+
+/** @type {typeof import('./debug-panel.mjs') | null} */
+let debug = null;
 
 const menu = document.getElementById('app-menu');
 const userLabel = document.getElementById('user-label');
@@ -30,7 +32,7 @@ let stopPresence = null;
  * @param {string} [context] - Error context.
  */
 function showError(error, context = '') {
-    bootError(error, context);
+    debug?.bootError(error, context);
 }
 
 /**
@@ -69,10 +71,10 @@ function renderLeaderboard(entries) {
 }
 
 async function refreshLeaderboard() {
-    if (!firestoreApi || !realtimeApi) return;
+    if (!firestoreApi || !realtimeApi || !debug) return;
 
-    setBootStep('ranking', 'loading');
-    bootLog('Carregando ranking...');
+    debug.setBootStep('ranking', 'loading');
+    debug.bootLog('Carregando ranking...');
 
     stopLiveLeaderboard?.();
     const entries = await withTimeout(
@@ -82,15 +84,15 @@ async function refreshLeaderboard() {
     );
     renderLeaderboard(entries);
     stopLiveLeaderboard = realtimeApi.subscribeLiveLeaderboard('default', renderLeaderboard);
-    setBootStep('ranking', 'ok');
-    bootLog(`Ranking carregado (${entries.length} entradas)`);
+    debug.setBootStep('ranking', 'ok');
+    debug.bootLog(`Ranking carregado (${entries.length} entradas)`);
 }
 
 async function setupPresence() {
-    if (!realtimeApi) return;
+    if (!realtimeApi || !debug) return;
     stopPresence?.();
     stopPresence = await realtimeApi.registerPresence();
-    bootLog('Presença online registrada');
+    debug.bootLog('Presença online registrada');
 }
 
 function showMenu() {
@@ -104,71 +106,76 @@ function hideMenu() {
 }
 
 function markAppReady() {
-    setBootStep('modules', 'ok');
-    setBootStep('firebase', 'ok');
-    setBootStep('auth', 'ok');
+    if (!debug) return;
+    debug.setBootStep('modules', 'ok');
+    debug.setBootStep('firebase', 'ok');
+    debug.setBootStep('auth', 'ok');
     showMenu();
     if (continueButton) continueButton.hidden = false;
-    bootLog('Pronto — toque em Continuar ou Jogar');
+    debug.bootLog('Pronto — toque em Continuar ou Jogar');
 }
 
 function wireUi() {
     playButton?.addEventListener('click', async () => {
+        if (!debug) return;
         try {
-            bootLog('Carregando motor 3D (~3,6 MB)...');
-            setBootStep('engine', 'loading');
+            debug.bootLog('Carregando motor 3D (~3,6 MB)...');
+            debug.setBootStep('engine', 'loading');
             await authApi?.ensureSignedIn();
             hideMenu();
-            hideBootShell();
+            debug.hideBootShell();
 
             const { startGame } = await import('./game.mjs');
-            setBootStep('engine', 'ok');
-            bootLog('Iniciando jogo...');
+            debug.setBootStep('engine', 'ok');
+            debug.bootLog('Iniciando jogo...');
 
             await startGame({
                 levelId: 'default',
                 onFinished: () => {
-                    bootLog('Voltando ao menu');
+                    debug.bootLog('Voltando ao menu');
                     showMenu();
                     refreshLeaderboard().catch((error) => showError(error, 'Ranking'));
                 }
             });
-            bootLog('Jogo iniciado com sucesso');
+            debug.bootLog('Jogo iniciado com sucesso');
         } catch (error) {
-            setBootStep('engine', 'error', 'Motor 3D — falhou');
+            debug.setBootStep('engine', 'error', 'Motor 3D — falhou');
             showMenu();
             showError(error, 'Falha ao iniciar jogo');
         }
     });
 
     googleButton?.addEventListener('click', async () => {
+        if (!debug || !authApi || !firestoreApi) return;
         try {
-            bootLog('Login Google...');
+            debug.bootLog('Login Google...');
             const result = await authApi.signInWithGoogle();
             await firestoreApi.upsertUserProfile(result.user);
             await setupPresence();
-            bootLog('Login Google OK');
+            debug.bootLog('Login Google OK');
         } catch (error) {
             showError(error, 'Login Google');
         }
     });
 
     guestButton?.addEventListener('click', async () => {
+        if (!debug || !authApi || !firestoreApi) return;
         try {
-            bootLog('Login convidado...');
+            debug.bootLog('Login convidado...');
             const result = await authApi.signInAsGuest();
             await firestoreApi.upsertUserProfile(result.user);
             await setupPresence();
-            bootLog('Login convidado OK');
+            debug.bootLog('Login convidado OK');
         } catch (error) {
             showError(error, 'Login convidado');
         }
     });
 
     logoutButton?.addEventListener('click', async () => {
+        if (!debug || !authApi) return;
         try {
             await authApi.signOutUser();
-            bootLog('Logout OK');
+            debug.bootLog('Logout OK');
         } catch (error) {
             showError(error, 'Logout');
         }
@@ -176,38 +183,40 @@ function wireUi() {
 }
 
 /**
+ * @param {typeof import('./debug-panel.mjs')} debugApi - Debug panel API.
  * @returns {Promise<void>}
  */
-export async function initApp() {
+export async function initApp(debugApi) {
+    debug = debugApi;
     wireUi();
 
     try {
-        setBootStep('firebase', 'loading');
-        bootLog('Baixando Firebase App...');
+        debug.setBootStep('firebase', 'loading');
+        debug.bootLog('Baixando Firebase App...');
         await import('./firebase/core.mjs');
-        bootLog('Firebase App OK');
+        debug.bootLog('Firebase App OK');
 
-        bootLog('Baixando Firebase Auth...');
+        debug.bootLog('Baixando Firebase Auth...');
         authApi = await import('./firebase/auth-service.mjs');
-        bootLog('Firebase Auth OK');
+        debug.bootLog('Firebase Auth OK');
 
-        bootLog('Baixando Firestore...');
+        debug.bootLog('Baixando Firestore...');
         firestoreApi = await import('./firebase/firestore-service.mjs');
-        bootLog('Firestore OK');
+        debug.bootLog('Firestore OK');
 
-        bootLog('Baixando Realtime Database...');
+        debug.bootLog('Baixando Realtime Database...');
         realtimeApi = await import('./firebase/realtime-service.mjs');
-        bootLog('Firebase completo');
+        debug.bootLog('Firebase completo');
 
-        setBootStep('auth', 'loading');
-        bootLog('Entrando como convidado...');
+        debug.setBootStep('auth', 'loading');
+        debug.bootLog('Entrando como convidado...');
         stopOnlineListener = realtimeApi.subscribeOnlineCount((count) => {
             if (onlineLabel) onlineLabel.textContent = `${count} online`;
         });
 
         await withTimeout(authApi.ensureSignedIn(), 25000, 'Autenticação');
-        setBootStep('auth', 'ok');
-        bootLog('Autenticação OK');
+        debug.setBootStep('auth', 'ok');
+        debug.bootLog('Autenticação OK');
 
         authApi.onUserChanged(async (user) => {
             renderUser(user);
@@ -224,8 +233,8 @@ export async function initApp() {
         await refreshLeaderboard();
         markAppReady();
     } catch (error) {
-        setBootStep('firebase', 'error', 'Firebase — falhou');
-        setBootStep('auth', 'error', 'Autenticação — falhou');
+        debug.setBootStep('firebase', 'error', 'Firebase — falhou');
+        debug.setBootStep('auth', 'error', 'Autenticação — falhou');
         showMenu();
         if (continueButton) continueButton.hidden = false;
         showError(error, 'Inicialização');
