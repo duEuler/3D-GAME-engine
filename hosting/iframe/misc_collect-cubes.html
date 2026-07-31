@@ -1,0 +1,49 @@
+<!-- N.B. All single quote strings starting with '@' and are in all caps denote placeholders for replacement code  -->
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+        <base href="../static/" />
+        <link rel="stylesheet" href="../iframe/main.css" />
+        <title>misc: collect-cubes</title>
+    </head>
+    <body>
+        <div id="app">
+            <div id="appInner">
+                <canvas id="application-canvas"></canvas>
+            </div>
+        </div>
+        <script src="../iframe/polyfill.js"></script>
+        <script type="importmap">
+            {
+                "imports": {
+                    "playcanvas": "../iframe/playcanvas.mjs",
+                    "playcanvas/scripts/": "./scripts/",
+                    "fflate": "../modules/fflate/esm/browser.js",
+                    "examples/assets/": "./assets/",
+                    "examples/context": "../iframe/context.mjs"
+                }
+            }
+        </script>
+        <script type="module">
+            import { ExampleLoader } from '../iframe/loader.mjs';
+            const loader = new ExampleLoader();
+
+            Object.defineProperty(window, 'ready', { get: () => loader.ready });
+
+            window.addEventListener('requestFiles', () => loader.sendRequestedFiles());
+            window.addEventListener('stats', (event) => loader.setMiniStats(!!event.detail?.state));
+            window.addEventListener('hotReload', () => loader.hotReload());
+            window.addEventListener('reloadFiles', (event) => loader.reloadFiles(event.detail));
+            window.addEventListener('destroy', () => loader.destroy());
+            window.addEventListener('beforeunload', () => loader.exit(), false);
+
+            document.addEventListener('DOMContentLoaded', () => {
+                loader.start({
+                    engineUrl: "../iframe/playcanvas.mjs",
+                    fileNames: ["example.mjs","controls.mjs"],
+                    config: {"NO_MINISTATS":true,"WEBGPU_DISABLED":true,"DESCRIPTION":"@title Collect Cubes\n@description Mini arcade game: move with WASD or the on-screen joystick, collect golden cubes before time runs out. Tap or press Space to restart."},
+                });
+            });
+        </script>
+    </body>
+</html>
