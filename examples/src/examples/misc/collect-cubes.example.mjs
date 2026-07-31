@@ -1,7 +1,8 @@
 // @config
 // @title Collect Cubes
-// @description Mini arcade game: move with WASD, collect golden cubes before time runs out. Press Space to restart.
+// @description Mini arcade game: move with WASD or the on-screen joystick, collect golden cubes before time runs out. Tap or press Space to restart.
 // @flag NO_MINISTATS
+// @flag WEBGPU_DISABLED
 
 import * as pc from 'playcanvas';
 
@@ -15,6 +16,7 @@ const PLAYER_SPEED = 8;
 const COLLECT_RADIUS = 1.1;
 const ARENA_HALF = 7;
 const TOTAL_COLLECTIBLES = 12;
+const IS_TOUCH_DEVICE = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 const assets = {
     font: new pc.Asset('font', 'font', { url: './assets/fonts/courier.json' })
@@ -74,6 +76,118 @@ const collectibles = [];
 let score = 0;
 let timeLeft = GAME_DURATION;
 let gameOver = false;
+/** @type {pc.Entity | null} */
+let player = null;
+
+/** @type {{ x: number, z: number }} */
+const touchInput = { x: 0, z: 0 };
+let restartQueued = false;
+
+/**
+ * @returns {{ destroy: () => void }} Touch joystick controller.
+ */
+function createTouchJoystick() {
+    const base = document.createElement('div');
+    base.style.cssText = [
+        'position:fixed',
+        'left:max(16px, env(safe-area-inset-left))',
+        'bottom:max(16px, env(safe-area-inset-bottom))',
+        'width:128px',
+        'height:128px',
+        'border-radius:50%',
+        'background:rgba(255,255,255,0.12)',
+        'border:2px solid rgba(255,255,255,0.35)',
+        'z-index:1000',
+        'touch-action:none',
+        'pointer-events:auto'
+    ].join(';');
+
+    const knob = document.createElement('div');
+    knob.style.cssText = [
+        'position:absolute',
+        'left:50%',
+        'top:50%',
+        'width:52px',
+        'height:52px',
+        'margin:-26px 0 0 -26px',
+        'border-radius:50%',
+        'background:rgba(120,190,255,0.85)',
+        'border:2px solid rgba(255,255,255,0.8)',
+        'transform:translate(0,0)',
+        'touch-action:none'
+    ].join(';');
+    base.appendChild(knob);
+    document.body.appendChild(base);
+
+    const radius = 38;
+    let activeTouchId = null;
+
+    /**
+     * @param {number} clientX - Touch or pointer X.
+     * @param {number} clientY - Touch or pointer Y.
+     */
+    const updateKnob = (clientX, clientY) => {
+        const rect = base.getBoundingClientRect();
+        const centerX = rect.left + rect.width * 0.5;
+        const centerY = rect.top + rect.height * 0.5;
+        let dx = clientX - centerX;
+        let dy = clientY - centerY;
+        const length = Math.hypot(dx, dy);
+        if (length > radius) {
+            dx = (dx / length) * radius;
+            dy = (dy / length) * radius;
+        }
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        touchInput.x = dx / radius;
+        touchInput.z = dy / radius;
+    };
+
+    const resetKnob = () => {
+        activeTouchId = null;
+        knob.style.transform = 'translate(0,0)';
+        touchInput.x = 0;
+        touchInput.z = 0;
+    };
+
+    /**
+     * @param {TouchEvent} event - Touch start/move event.
+     */
+    const onTouchStart = (event) => {
+        event.preventDefault();
+        const touch = event.changedTouches[0];
+        activeTouchId = touch.identifier;
+        updateKnob(touch.clientX, touch.clientY);
+    };
+
+    /**
+     * @param {TouchEvent} event - Touch move event.
+     */
+    const onTouchMove = (event) => {
+        event.preventDefault();
+        for (let i = 0; i < event.changedTouches.length; i++) {
+            const touch = event.changedTouches[i];
+            if (touch.identifier === activeTouchId) {
+                updateKnob(touch.clientX, touch.clientY);
+            }
+        }
+    };
+
+    base.addEventListener('touchstart', onTouchStart, { passive: false });
+    base.addEventListener('touchmove', onTouchMove, { passive: false });
+    base.addEventListener('touchend', resetKnob);
+    base.addEventListener('touchcancel', resetKnob);
+
+    return {
+        destroy: () => {
+            base.remove();
+        }
+    };
+}
+
+const touchJoystick = IS_TOUCH_DEVICE ? createTouchJoystick() : null;
+app.on('destroy', () => {
+    touchJoystick?.destroy();
+});
 
 /**
  * @param {pc.Entity} screen - UI screen entity.
@@ -139,7 +253,8 @@ function restartGame() {
     score = 0;
     timeLeft = GAME_DURATION;
     gameOver = false;
-    player.setPosition(0, 0.5, 0);
+    restartQueued = false;
+    player?.setPosition(0, 0.5, 0);
     resetCollectibles();
 }
 
@@ -184,7 +299,7 @@ assetListLoader.load(() => {
         app.root.addChild(wall);
     });
 
-    const player = new pc.Entity('player');
+    player = new pc.Entity('player');
     player.addComponent('render', {
         type: 'box',
         material: playerMaterial
@@ -221,7 +336,8 @@ assetListLoader.load(() => {
     });
     app.root.addChild(screen);
 
-    const titleText = createHudText(screen, assets.font, 'title', 'Collect Cubes — WASD to move', 0.08, 28);
+    const controlHint = IS_TOUCH_DEVICE ? 'Use the joystick to move' : 'WASD to move';
+    const titleText = createHudText(screen, assets.font, 'title', `Collect Cubes — ${controlHint}`, 0.08, 28);
     const scoreText = createHudText(screen, assets.font, 'score', 'Score: 0', 0.14, 36);
     const timerText = createHudText(screen, assets.font, 'timer', `Time: ${GAME_DURATION}`, 0.2, 36);
     const statusText = createHudText(screen, assets.font, 'status', '', 0.5, 48);
@@ -230,10 +346,18 @@ assetListLoader.load(() => {
 
     resetCollectibles();
 
+    if (IS_TOUCH_DEVICE) {
+        canvas.addEventListener('touchend', () => {
+            if (gameOver) {
+                restartQueued = true;
+            }
+        }, { passive: true });
+    }
+
     app.on('update', (/** @type {number} */ dt) => {
         const keyboard = app.keyboard;
 
-        if (keyboard.wasPressed(pc.KEY_SPACE)) {
+        if (keyboard.wasPressed(pc.KEY_SPACE) || restartQueued) {
             restartGame();
         }
 
@@ -241,7 +365,9 @@ assetListLoader.load(() => {
             timeLeft = Math.max(0, timeLeft - dt);
             if (timeLeft <= 0) {
                 gameOver = true;
-                statusText.element.text = 'Time up! Press SPACE to restart';
+                statusText.element.text = IS_TOUCH_DEVICE ?
+                    'Time up! Tap the screen to restart' :
+                    'Time up! Press SPACE to restart';
             }
 
             const move = new pc.Vec3();
@@ -249,6 +375,11 @@ assetListLoader.load(() => {
             if (keyboard.isPressed(pc.KEY_S) || keyboard.isPressed(pc.KEY_DOWN)) move.z += 1;
             if (keyboard.isPressed(pc.KEY_A) || keyboard.isPressed(pc.KEY_LEFT)) move.x -= 1;
             if (keyboard.isPressed(pc.KEY_D) || keyboard.isPressed(pc.KEY_RIGHT)) move.x += 1;
+
+            if (IS_TOUCH_DEVICE && (touchInput.x !== 0 || touchInput.z !== 0)) {
+                move.x += touchInput.x;
+                move.z += touchInput.z;
+            }
 
             if (move.lengthSq() > 0) {
                 move.normalize().mulScalar(PLAYER_SPEED * dt);
@@ -269,13 +400,15 @@ assetListLoader.load(() => {
 
                     if (collectibles.length === 0) {
                         gameOver = true;
-                        statusText.element.text = `You win! Score: ${score}. Press SPACE to restart`;
+                        statusText.element.text = IS_TOUCH_DEVICE ?
+                            `You win! Score: ${score}. Tap to restart` :
+                            `You win! Score: ${score}. Press SPACE to restart`;
                     }
                 }
             }
         }
 
         timerText.element.text = `Time: ${Math.ceil(timeLeft)}`;
-        titleText.element.text = gameOver ? 'Collect Cubes' : 'Collect Cubes — WASD to move';
+        titleText.element.text = gameOver ? 'Collect Cubes' : `Collect Cubes — ${controlHint}`;
     });
 });
