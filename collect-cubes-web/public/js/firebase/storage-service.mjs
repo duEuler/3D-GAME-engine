@@ -1,11 +1,19 @@
-import {
-    getDownloadURL,
-    ref,
-    uploadString
-} from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
-
-import { storage } from './app.mjs';
+import { getApp } from './core.mjs';
 import { getCurrentUser } from './auth-service.mjs';
+
+/** @type {import('firebase/storage').FirebaseStorage | null} */
+let storage = null;
+
+/**
+ * @returns {Promise<import('firebase/storage').FirebaseStorage>}
+ */
+async function getStorageClient() {
+    if (!storage) {
+        const { getStorage } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js');
+        storage = getStorage(await getApp());
+    }
+    return storage;
+}
 
 /**
  * @param {string} levelId - Level identifier.
@@ -18,8 +26,10 @@ export async function uploadLevelDefinition(levelId, levelData) {
         throw new Error('Usuário não autenticado.');
     }
 
+    const { getDownloadURL, ref, uploadString } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js');
+    const storageClient = await getStorageClient();
     const path = `collect-cubes/levels/${user.uid}/${levelId}.json`;
-    const storageRef = ref(storage, path);
+    const storageRef = ref(storageClient, path);
     await uploadString(storageRef, JSON.stringify(levelData, null, 2), 'raw', {
         contentType: 'application/json'
     });
@@ -37,9 +47,10 @@ export async function uploadLevelThumbnail(levelId, imageBlob) {
         throw new Error('Usuário não autenticado.');
     }
 
+    const { getDownloadURL, ref, uploadBytes } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js');
+    const storageClient = await getStorageClient();
     const path = `collect-cubes/thumbnails/${user.uid}/${levelId}.png`;
-    const storageRef = ref(storage, path);
-    const { uploadBytes } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js');
+    const storageRef = ref(storageClient, path);
     await uploadBytes(storageRef, imageBlob, { contentType: 'image/png' });
     return getDownloadURL(storageRef);
 }

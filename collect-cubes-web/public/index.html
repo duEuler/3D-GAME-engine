@@ -223,15 +223,17 @@
                 throw new Error('Navegador sem suporte a import maps. Atualize o Safari/Chrome.');
             }
 
-            const debug = await import('./js/debug-panel.mjs?v=2');
+            const debug = await import('./js/debug-panel.mjs?v=3');
             debug.installGlobalErrorHandlers();
 
             if (window.__bootLogs) {
                 window.__bootLogs.forEach((e) => debug.bootLog(e.message, e.isError ? 'error' : 'info'));
             }
 
-            debug.bootLog('Carregando app...');
-            await import('./js/bootstrap.mjs?v=2');
+            const bootstrap = await import('./js/bootstrap.mjs?v=3');
+            debug.setBootStep('modules', 'ok');
+            debug.bootLog('Módulos JS OK — iniciando Firebase...');
+            await bootstrap.initApp();
             debug.bootLog('App carregado');
         } catch (error) {
             fail(error);

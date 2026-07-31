@@ -1,14 +1,28 @@
-import {
-    get,
-    onDisconnect,
-    onValue,
-    ref,
-    serverTimestamp,
-    set
-} from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js';
-
-import { rtdb } from './app.mjs';
+import { getApp } from './core.mjs';
 import { getCurrentUser } from './auth-service.mjs';
+
+/** @type {import('firebase/database').Database | null} */
+let rtdb = null;
+
+/** @type {Promise<import('firebase/database').Database> | null} */
+let rtdbInitPromise = null;
+
+/**
+ * @returns {Promise<import('firebase/database').Database>}
+ */
+async function getRtdb() {
+    if (rtdb) return rtdb;
+
+    if (!rtdbInitPromise) {
+        rtdbInitPromise = (async () => {
+            const { getDatabase } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+            rtdb = getDatabase(await getApp());
+            return rtdb;
+        })();
+    }
+
+    return rtdbInitPromise;
+}
 
 /**
  * @param {string} levelId - Level identifier.
@@ -22,7 +36,14 @@ export async function publishLiveScore(levelId, score, displayName) {
         return;
     }
 
-    const scoreRef = ref(rtdb, `collectCubes/leaderboards/${levelId}/scores/${user.uid}`);
+    const {
+        get,
+        ref,
+        serverTimestamp,
+        set
+    } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+    const database = await getRtdb();
+    const scoreRef = ref(database, `collectCubes/leaderboards/${levelId}/scores/${user.uid}`);
     const currentSnap = await get(scoreRef);
     const currentScore = currentSnap.exists() ? currentSnap.val().score ?? 0 : 0;
     if (score < currentScore) {
@@ -42,18 +63,23 @@ export async function publishLiveScore(levelId, score, displayName) {
  * @returns {() => void} Unsubscribe function.
  */
 export function subscribeLiveLeaderboard(levelId, callback) {
-    const leaderboardRef = ref(rtdb, `collectCubes/leaderboards/${levelId}/scores`);
-    const unsubscribe = onValue(leaderboardRef, (snapshot) => {
-        const value = snapshot.val() || {};
-        const entries = Object.entries(value)
-            .map(([uid, data]) => ({
-                uid,
-                score: data.score ?? 0,
-                displayName: data.displayName ?? 'Jogador'
-            }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10);
-        callback(entries);
+    let unsubscribe = () => {};
+
+    getRtdb().then(async (database) => {
+        const { onValue, ref } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+        const leaderboardRef = ref(database, `collectCubes/leaderboards/${levelId}/scores`);
+        unsubscribe = onValue(leaderboardRef, (snapshot) => {
+            const value = snapshot.val() || {};
+            const entries = Object.entries(value)
+                .map(([uid, data]) => ({
+                    uid,
+                    score: data.score ?? 0,
+                    displayName: data.displayName ?? 'Jogador'
+                }))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
+            callback(entries);
+        });
     });
 
     return () => unsubscribe();
@@ -68,7 +94,14 @@ export async function registerPresence() {
         return () => {};
     }
 
-    const presenceRef = ref(rtdb, `collectCubes/presence/${user.uid}`);
+    const {
+        onDisconnect,
+        ref,
+        serverTimestamp,
+        set
+    } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+    const database = await getRtdb();
+    const presenceRef = ref(database, `collectCubes/presence/${user.uid}`);
     await set(presenceRef, serverTimestamp());
     await onDisconnect(presenceRef).remove();
 
@@ -80,9 +113,15 @@ export async function registerPresence() {
  * @returns {() => void} Unsubscribe function.
  */
 export function subscribeOnlineCount(callback) {
-    const presenceRef = ref(rtdb, 'collectCubes/presence');
-    const unsubscribe = onValue(presenceRef, (snapshot) => {
-        callback(snapshot.exists() ? Object.keys(snapshot.val()).length : 0);
+    let unsubscribe = () => {};
+
+    getRtdb().then(async (database) => {
+        const { onValue, ref } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js');
+        const presenceRef = ref(database, 'collectCubes/presence');
+        unsubscribe = onValue(presenceRef, (snapshot) => {
+            callback(snapshot.exists() ? Object.keys(snapshot.val()).length : 0);
+        });
     });
+
     return () => unsubscribe();
 }

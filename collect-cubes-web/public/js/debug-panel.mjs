@@ -328,7 +328,20 @@ export function checkCssLoaded() {
 wireUi();
 checkCssLoaded();
 setBootStep('modules', 'loading');
-bootLog('Carregando módulos...');
+bootLog('Aguardando bootstrap...');
 renderBootShell();
+
+const WATCHDOG_MS = [8000, 16000, 30000];
+WATCHDOG_MS.forEach((ms) => {
+    setTimeout(() => {
+        const step = bootSteps.modules;
+        if (step?.status !== 'ok' && step?.status !== 'error') {
+            bootLog(`Ainda carregando há ${Math.round(ms / 1000)}s — conexão lenta?`, 'warn');
+        }
+        if (bootSteps.firebase?.status === 'loading') {
+            bootLog(`Firebase ainda baixando (${Math.round(ms / 1000)}s)...`, 'warn');
+        }
+    }, ms);
+});
 
 window.collectCubesDebug = { bootLog, bootError, openPanel, closePanel, setBootStep, showBootShell, hideBootShell, copyReport, entries };

@@ -1,24 +1,37 @@
-import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    limit,
-    orderBy,
-    query,
-    serverTimestamp,
-    setDoc
-} from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
-
-import { db } from './app.mjs';
+import { getApp } from './core.mjs';
 import { getCurrentUser } from './auth-service.mjs';
+
+/** @type {import('firebase/firestore').Firestore | null} */
+let db = null;
+
+/** @type {Promise<import('firebase/firestore').Firestore> | null} */
+let dbInitPromise = null;
+
+/**
+ * @returns {Promise<import('firebase/firestore').Firestore>}
+ */
+async function getDb() {
+    if (db) return db;
+
+    if (!dbInitPromise) {
+        dbInitPromise = (async () => {
+            const { getFirestore } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+            db = getFirestore(await getApp());
+            return db;
+        })();
+    }
+
+    return dbInitPromise;
+}
 
 /**
  * @param {import('firebase/auth').User} user - Authenticated user.
  * @returns {Promise<void>}
  */
 export async function upsertUserProfile(user) {
-    await setDoc(doc(db, 'users', user.uid), {
+    const { doc, serverTimestamp, setDoc } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+    const database = await getDb();
+    await setDoc(doc(database, 'users', user.uid), {
         displayName: user.displayName || 'Jogador',
         photoURL: user.photoURL || null,
         isAnonymous: user.isAnonymous,
@@ -38,9 +51,17 @@ export async function saveRunResult(levelId, score, timeLeft) {
         return;
     }
 
+    const {
+        doc,
+        getDoc,
+        serverTimestamp,
+        setDoc
+    } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+    const database = await getDb();
+
     const displayName = user.displayName || 'Jogador';
-    const progressRef = doc(db, 'users', user.uid, 'progress', levelId);
-    const leaderboardRef = doc(db, 'leaderboards', levelId, 'scores', user.uid);
+    const progressRef = doc(database, 'users', user.uid, 'progress', levelId);
+    const leaderboardRef = doc(database, 'leaderboards', levelId, 'scores', user.uid);
 
     const progressSnap = await getDoc(progressRef);
     const previousBest = progressSnap.exists() ? progressSnap.data().bestScore ?? 0 : 0;
@@ -72,7 +93,15 @@ export async function saveRunResult(levelId, score, timeLeft) {
  * @returns {Promise<Array<{uid: string, score: number, displayName: string}>>}
  */
 export async function fetchLeaderboard(levelId, maxEntries = 10) {
-    const scoresRef = collection(db, 'leaderboards', levelId, 'scores');
+    const {
+        collection,
+        getDocs,
+        limit,
+        orderBy,
+        query
+    } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+    const database = await getDb();
+    const scoresRef = collection(database, 'leaderboards', levelId, 'scores');
     const leaderboardQuery = query(scoresRef, orderBy('score', 'desc'), limit(maxEntries));
     const snapshot = await getDocs(leaderboardQuery);
 
@@ -93,7 +122,9 @@ export async function fetchUserProgress(levelId) {
         return null;
     }
 
-    const progressRef = doc(db, 'users', user.uid, 'progress', levelId);
+    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+    const database = await getDb();
+    const progressRef = doc(database, 'users', user.uid, 'progress', levelId);
     const snapshot = await getDoc(progressRef);
     if (!snapshot.exists()) {
         return null;
