@@ -1,5 +1,7 @@
 import { withTimeout } from './firebase/with-timeout.mjs';
 
+const AUTH_VERSION = '10';
+
 /** @type {typeof import('./debug-panel.mjs') | null} */
 let debug = null;
 
@@ -213,16 +215,16 @@ export async function initApp(debugApi) {
         wireUi();
 
         debug.setBootStep('firebase', 'loading');
-        await import('./firebase/core.mjs');
+        await import('./firebase/core.mjs?v=' + AUTH_VERSION);
         debug.bootLog('Firebase App OK');
 
-        authApi = await import('./firebase/auth-service.mjs');
+        authApi = await import('./firebase/auth-service.mjs?v=' + AUTH_VERSION);
         debug.bootLog('Firebase Auth OK');
 
-        firestoreApi = await import('./firebase/firestore-service.mjs');
+        firestoreApi = await import('./firebase/firestore-service.mjs?v=' + AUTH_VERSION);
         debug.bootLog('Firestore OK');
 
-        realtimeApi = await import('./firebase/realtime-service.mjs');
+        realtimeApi = await import('./firebase/realtime-service.mjs?v=' + AUTH_VERSION);
         debug.bootLog('Realtime DB OK');
         debug.setBootStep('firebase', 'ok');
 
@@ -234,13 +236,15 @@ export async function initApp(debugApi) {
         await withTimeout(authApi.ensureSignedIn(), 25000, 'Autenticação');
         debug.setBootStep('auth', 'ok');
 
-        try {
-            const redirectResult = await authApi.completeGoogleRedirectIfNeeded();
-            if (redirectResult?.user) {
-                debug.bootLog(`Login Google OK (${redirectResult.user.email || 'conta'})`);
+        if (typeof authApi.completeGoogleRedirectIfNeeded === 'function') {
+            try {
+                const redirectResult = await authApi.completeGoogleRedirectIfNeeded();
+                if (redirectResult?.user) {
+                    debug.bootLog(`Login Google OK (${redirectResult.user.email || 'conta'})`);
+                }
+            } catch (error) {
+                debug.bootLog(`Retorno Google: ${error instanceof Error ? error.message : String(error)}`, 'warn');
             }
-        } catch (error) {
-            showError(error, 'Retorno Google');
         }
 
         authApi.onUserChanged(async (user) => {
